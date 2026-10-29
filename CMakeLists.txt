@@ -38,11 +38,14 @@ if(WIN32)
                 $<TARGET_FILE_DIR:streetrod-enhanced>
         COMMAND_EXPAND_LISTS)
     # And what those load in turn (MSYS2's SDL3.dll needs libiconv-2.dll), so the game starts outside
-    # the MSYS2 shell, e.g. from the launcher.
-    get_filename_component(SR_DLL_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
-    add_custom_command(TARGET streetrod-enhanced POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:streetrod-enhanced> "-DSEARCH=${SR_DLL_DIR}"
-                -DCMAKE_OBJDUMP=${CMAKE_OBJDUMP} -P ${CMAKE_CURRENT_SOURCE_DIR}/launcher/copy_dlls.cmake)
+    # the MSYS2 shell, e.g. from the launcher. Not when cross-compiling (cmake/mingw-w64-x86_64.cmake): the
+    # official SDL3 mingw package's DLL needs only Windows' own DLLs, and the runtime is linked statically.
+    if(NOT CMAKE_CROSSCOMPILING)
+        get_filename_component(SR_DLL_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+        add_custom_command(TARGET streetrod-enhanced POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:streetrod-enhanced> "-DSEARCH=${SR_DLL_DIR}"
+                    -DCMAKE_OBJDUMP=${CMAKE_OBJDUMP} -P ${CMAKE_CURRENT_SOURCE_DIR}/launcher/copy_dlls.cmake)
+    endif()
 endif()
 
 # The launcher ("Street Rod Enhanced"): the game folder, the original or the data disk's cars, the
