@@ -10,6 +10,7 @@
 #include "game/flow.h"
 #include "game/garage.h"
 #include "game/race.h"
+#include "game/race_int.h"
 #include "game/ui.h"
 #include "host.h"
 #include "platform/platform.h"
@@ -22,7 +23,6 @@
 static bool enabled;
 static int  slot = 16;
 static bool saved_ok;           /* the save before the current race succeeded */
-static bool requested;          /* the player chose Retry; the game loop loads the slot */
 static u8   file_buf[FILE_MAX];
 static u32  file_len;
 
@@ -51,10 +51,69 @@ static u16 slot_name(void)
     return fl_save_name(FLOW_STK_FNAME, FLOW_TMPL_SAVE, (s16)slot);
 }
 
+/* ---- the race record (spec 4.6): what the save does not hold, kept for the restart. In C only, never
+ * written to a file, so the slot stays a vanilla save. */
+#define BOB_PICS     0x827A     /* 827A opponent picture, 827C colour, 827E tyre set, 8280 face */
+static struct {
+    u16 opp, type, bet_kind, bet_amount, bet_button, king_drag_won;
+    u8  king_ready;
+    u16 rnd[3];
+    u16 bob[4];
+} rec;
+
+static void race_record_save(void)
+{
+    rec.opp = DSW(DS_opp_index);
+    rec.type = DSW(DS_race_type);
+    rec.bet_kind = DSW(DS_bet_kind);
+    rec.bet_amount = DSW(DS_bet_amount);
+    rec.bet_button = DSW(DS_bet_button);
+    rec.king_drag_won = DSW(DS_king_drag_won);
+    rec.king_ready = DSB(DS_king_ready);
+    rec.rnd[0] = DSW(DS_rnd_s1); rec.rnd[1] = DSW(DS_rnd_s2); rec.rnd[2] = DSW(DS_rnd_s3);
+    for (int i = 0; i < 4; i++) rec.bob[i] = DSW((u16)(BOB_PICS + 2 * i));
+}
+
+/* Everything but the random-number state, which comes last (race_record_rnd). The opponent fields are set
+ * as opponent_load 0000:98ba sets them, without its random sticker / customising. */
+static void race_record_restore(void)
+{
+    DSW(DS_opp_index) = rec.opp;
+    DSW(DS_race_type) = rec.type;
+    DSW(DS_bet_kind) = rec.bet_kind;
+    DSW(DS_bet_amount) = rec.bet_amount;
+    DSW(DS_bet_button) = rec.bet_button;
+    DSW(DS_king_drag_won) = rec.king_drag_won;
+    DSB(DS_king_ready) = rec.king_ready;
+    u16 orec = OREC(rec.opp);
+    DSW(DS_opp_rec) = orec;
+    DSW(DS_opp_model) = DSW((u16)(orec + OR_MODEL));
+    DSW(DS_opp_model_ptr) = MODEL(DSS(DS_opp_model));
+    DSW(DS_vs_king) = rec.opp == 0x15;
+    for (int i = 0; i < 4; i++) DSW((u16)(BOB_PICS + 2 * i)) = rec.bob[i];
+}
+
+static void race_record_rnd(void)
+{
+    DSW(DS_rnd_s1) = rec.rnd[0]; DSW(DS_rnd_s2) = rec.rnd[1]; DSW(DS_rnd_s3) = rec.rnd[2];
+}
+
+/* "retry: start ..." right before race_start: what the race is run with (tests compare these). */
+static void log_start(void)
+{
+    if (!enabled) return;
+    logf_("start opp %u type %u bet %u/%u/%u king %u/%u rnd %u %u %u money %ld clock %lu",
+          DSW(DS_opp_index), DSW(DS_race_type), DSW(DS_bet_kind), DSW(DS_bet_amount), DSW(DS_bet_button),
+          DSW(DS_king_drag_won), DSB(DS_king_ready), DSW(DS_rnd_s1), DSW(DS_rnd_s2), DSW(DS_rnd_s3),
+          (long)DSSL(DS_money), (unsigned long)DSL(DS_game_clock));
+}
+
 void retry_before_race(void)
 {
     saved_ok = enabled && flow_save_write(slot_name());
     if (enabled) logf_("saved slot %d %s", slot, saved_ok ? "ok" : "failed");
+    if (saved_ok) race_record_save();
+    log_start();
 }
 
 /* ---- outcome (spec 4.3; race_results.c: police 0x40, jumped light 0x81, lost-intact 1, breakdown
@@ -147,8 +206,6 @@ void retry_apply(void)
     file_len = 0;
 }
 
-void retry_request(void) { requested = true; }
-
 /* ---- the dialog: screen 0x1E ("The old game will be replaced !" with "Go ahead" -20 / "Forget it" -21,
  * keys Enter / G -> -20, Esc / F -> -21) shown with other texts. The three label words of its records
  * and the four scan codes of its key map are changed for the call and restored afterwards. The texts
@@ -205,22 +262,38 @@ bool retry_offer(s16 r)
     RetryOutcome o = retry_classify(r);
     logf_("outcome %s", retry_outcome_name(o));
     if (!retry_is_loss(o) || !saved_ok) return false;
-    saved_ok = false;                                 /* one offer per save */
     logf_("offer");
-    if (!dialog_ask("Lost it ? Run that race again ?", "Retry", "Go on")) return false;
+    bool yes;
+    const char *ans = getenv("SR_RETRY_ANSWERS");      /* developer aid: answers without the dialog */
+    static int n_ans;
+    if (ans && *ans) yes = ans[n_ans < (int)strlen(ans) ? n_ans++ : (int)strlen(ans) - 1] == 'R';
+    else yes = dialog_ask("Lost it ? Run that race again ?", "Retry", "Go on");
+    if (!yes) { saved_ok = false; return false; }
     if (!retry_check()) {
+        saved_ok = false;
         dialog_msg("Retry failed !");                 /* the game's own message box, OK */
         return false;
     }
-    retry_request();
     return true;
 }
 
-bool retry_take_request(void)
+/* After a true retry_offer: the pre-race state, then the same race (spec 4.6). saved_ok stays true: the
+ * slot still holds the state before the first try, so a new loss is offered again. */
+static void (*after_start_hook)(void);
+
+void retry_restart_race(void)
 {
-    bool r = requested;
-    requested = false;
-    return r;
+    drv_pal_black();                                  /* give register 0Ch back (lent to the opponent) */
+    opp_palette_set(-1);
+    retry_apply();
+    race_record_restore();
+    race_record_rnd();
+    logf_("restarted opp %u type %u bet %u rnd %u %u %u", rec.opp, rec.type, rec.bet_kind,
+          rec.rnd[0], rec.rnd[1], rec.rnd[2]);
+    log_start();
+    race_start();
+    if (after_start_hook) after_start_hook();
+    flow_clock_add(DSW(DS_race_type) == 0 ? 0x444 : 0x777);   /* each try costs the race's time */
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -274,10 +347,16 @@ void retry_debug_race_before(void)
     debug_state("before");
 }
 
+/* SR_RETRY_FORCE=a,b,..: the result of race n (1-based) is the n-th entry (hex player_result, W = win). */
+static int race_no;
+
 void retry_debug_race_after(void)
 {
     const char *v = getenv("SR_RETRY_FORCE");
+    int n = race_no++;
     if (!v || !*v) return;
+    for (; n > 0 && v; n--) { v = strchr(v, ','); if (v) v++; }
+    if (!v || !*v || *v == ',') return;
     if (*v == 'W') {
         DSB(DS_opp_result) |= 1;
     } else {
@@ -289,7 +368,11 @@ void retry_debug_race_after(void)
 
 void retry_debug_race_done(s16 r)
 {
-    if (retry_offer(r) && retry_take_request()) retry_apply();
+    after_start_hook = retry_debug_race_after;
+    while (retry_offer(r)) {                          /* as bob_drive_in */
+        retry_restart_race();
+        r = (s16)race_results();
+    }
     debug_state("after");
 }
 

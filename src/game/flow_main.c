@@ -139,13 +139,6 @@ new_or_load:                                          /* 0000:5050 */
                 drive_to();
                 clock_hour();
                 bob_drive_in();
-                if (retry_take_request()) {           /* RETRY: back to the garage before that race */
-                    retry_apply();
-                    DSW(DS_game_end_flags) = 0;
-                    music_mute(0);
-                    redraw = 1;
-                    continue;
-                }
             } else {
                 if (DSS((u16)(DSW(DS_car) + 0x22)) >= 0x8C) { msg_box(0x19B1); redraw = 0; continue; }  /* "You've got a full tank!" */
                 if (DSL(DS_money) == 0) { msg_box(0x199F); redraw = 0; continue; }                     /* "Gas ain't free!" */

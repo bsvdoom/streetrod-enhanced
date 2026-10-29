@@ -76,12 +76,7 @@ bool race_debug_main(void)
         if (strcmp(mode, "bob") == 0) {
             retry_debug_race_before_bob();         /* RETRY: state line */
             bob_drive_in();
-            if (retry_take_request()) {            /* RETRY: as game_loop after bob_drive_in */
-                retry_apply();
-                DSW(DS_game_end_flags) = 0;
-                retry_debug_state("after");
-                garage_screen(1);                  /* shows the garage; the test stops the run */
-            }
+            retry_debug_state("after");
         }
     }
     platform_exit();

@@ -25,13 +25,14 @@ bool retry_check(void);
 /* Loads the checked buffer into the game (after a passed retry_check). */
 void retry_apply(void);
 
-void retry_request(void);                      /* bob_drive_in: the player chose Retry */
-bool retry_take_request(void);                 /* game_loop: true once per request */
-
 /* bob_drive_in, right after race_results() returned r: after a lost race (and a successful save before
- * it) asks "Retry" / "Go on". True = Retry chosen and the slot checked (the request is set); the caller
- * leaves Bob's at once. A failed check shows "Retry failed !" and returns false. */
+ * it) asks "Retry" / "Go on". True = Retry chosen and the slot checked: the caller calls
+ * retry_restart_race() and evaluates that race in turn. A failed check shows "Retry failed !" and returns
+ * false. */
 bool retry_offer(s16 r);
+/* The state before the race, then the same race again (same opponent, kind, bet, random-number state);
+ * adds the race's game time as challenge() does. */
+void retry_restart_race(void);
 
 /* Developer aids for the race path of SR_DEBUG_RACE (hooks_race.c): before / after the race. */
 void retry_debug_race_before(void);
