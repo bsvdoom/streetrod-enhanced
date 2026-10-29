@@ -1,13 +1,15 @@
 # Retry option for Street Rod Enhanced — design
 
-Date: 2026-10-29. Branch `mod/retry` of `streetrod-enhanced` (based on 0.2.0, 9393e28).
+Date: 2026-10-29 (revised 2026-10-29 18:5x: Retry restarts the same race; the garage variant is dropped).
+Branch `mod/retry` of `streetrod-enhanced` (based on 0.2.0, 9393e28).
 Source of the request: `../mod_readme.md` (the workspace root, Hungarian).
 
 ## 1. Intent
 
 The player wants a second chance after losing a race at Bob's Drive-In: when a race is lost, the game
-offers a **Retry** button that restores the game as it was just before that race. The state is kept in a
-save slot that the player can choose (default: an invisible 16th slot).
+offers a **Retry** button that restores the game as it was just before that race and **runs that same race
+again**: the same opponent, the same kind of race, the same bet, the same random-number state. The state is
+kept in a save slot that the player can choose (default: an invisible 16th slot).
 
 The change is made directly in the Enhanced source (C), as a small, readable patch on its own branch.
 Another user reviews that diff and builds it locally. There is no scripting layer.
@@ -16,7 +18,7 @@ Another user reviews that diff and builds it locally. There is no scripting laye
 
 Goals
 
-* Retry after every kind of lost race (§4.3), restoring the pre-race state, back in the garage.
+* Retry after every kind of lost race (§4.3): restore the pre-race state and restart the same race (§4.6).
 * Off by default. Switched on in the launcher (or `--retry` on the command line). Switched off, the game
   behaves exactly as the unmodified Enhanced.
 * Windows build (cross-compiled here with mingw-w64), game and launcher; Linux build for development.
@@ -28,7 +30,7 @@ Non-goals
 
 * A mod system (Lua or other scripting) and the data-mod layer (text files replacing prices, parts,
   opponents, texts). The call sites added here can host them later.
-* Retrying the very same race (same opponent, same bet) directly. Retry returns to the garage.
+* Returning to the garage after Retry (the first implementation did; dropped by the user 2026-10-29).
 * The faithful port in this round.
 
 Anti-goals (a failure even if it works)
@@ -87,10 +89,9 @@ Races "just for kicks" (no bet) are included: a crash or breakdown still costs. 
 leads to the ending: no offer.
 
 * Go on: everything continues as the original does.
-* Retry: `bob_drive_in` returns at once (no jail, no stats, no King penalty, no drive home), with a C-side
-  retry request set. The game loop sees it after `bob_drive_in()`, loads the slot and shows the garage
-  (redraw 1), without the `clock_hour()` that follows Bob's. `DS_game_end_flags` stays 0, so a jail
-  sentence never becomes a game over.
+* Retry: the race is run again at once, inside `bob_drive_in()` (§4.6). The bookkeeping of the lost race
+  (stats, King penalty, jail, drive home) is skipped; after the new race the original bookkeeping runs
+  for the new result, and a new loss offers Retry again. A jail sentence of the lost race never happens.
 
 ### 4.4 Safe load
 
@@ -101,17 +102,43 @@ a "Retry failed" message is shown, and the game goes on as with "Go on". It neve
 
 ### 4.5 Result after Retry
 
-The game is in the garage with the money, cars, parts, wins, opponents and date of the save point. Bob's
-Drive-In has to be visited again (the cruise costs fuel and time as usual). The calendar headline is
-re-picked, as on any load.
+The game state is that of the save point (money, cars, parts, wins, opponents, date, fuel), then the same
+race runs again. Each try costs the race's time again (drag +0x444, road +0x777 game-clock units, as
+`challenge()` adds after `race_start()`), so retrying is not free (user decision). The opponent table is
+part of the vanilla save, so an opponent beaten for pink slips, re-rolled, or "gone" in the lost race is
+back as he was before it; only his index has to be remembered.
+
+### 4.6 Restarting the same race
+
+Right before `race_start()` in `challenge()`, next to the silent save, a C-side record (never written to
+a file, so saves stay vanilla) keeps:
+
+| Field | DGROUP | Why |
+|---|---|---|
+| opponent index | `DS_opp_index` 7F82 | which opponent (21 = the King) |
+| race type | `DS_race_type` 7EC0 | drag / road |
+| bet kind, amount, button | `DS_bet_kind` 79A2, `DS_bet_amount` 79A4, `DS_bet_button` 8278 | the bet; "just for kicks" |
+| King state | `DS_king_drag_won` 4976, `DS_king_ready` 817D | which of the King's two races |
+| random-number state | `DS_rnd_s1..s3` 6C62..6C66 | same police, opponent behaviour and breakdown chances |
+| Bob's picture globals | 827A..8280 (opponent picture, colour, tyres, face) | drawing |
+
+On Retry, after the checked load (§4.4): write the record back; set `DS_opp_rec`, `DS_opp_model`,
+`DS_opp_model_ptr`, `DS_vs_king` from the opponent's table entry **without** `opponent_load()` (it draws
+random numbers and may change his sticker); restore the random-number state last; set the car and
+opponent palettes as the challenge leaves them; then `race_start()`, the race's clock cost, and the
+result goes through the same code as any race (`race_results()`, the offer, the bookkeeping).
+
+The same random-number state gives the same race only while the player drives the same way: the game
+draws random numbers during the race, so different driving diverges from there. A restart within the
+same session only: quitting the game drops the record (the slot file stays a normal save).
 
 ## 5. Layout of the change
 
 ```
-src/game/retry.c, retry.h   options, silent save, safe load, outcome classification, dialog
+src/game/retry.c, retry.h   options, silent save, safe load, outcome classification, dialog, race record
 src/game/flow_save.c        the writing part of save_game_screen factored out (no behaviour change)
-src/game/race_bob.c         RETRY: save before race_start(), the offer after race_results()
-src/game/flow_main.c        RETRY: the load after bob_drive_in()
+src/game/race_bob.c         RETRY: save + race record before race_start(), the offer and the restart
+                            after race_results()
 src/main.c                  --retry, --retry-slot
 launcher/                   checkbox, slot choice, settings, arguments
 cmake/mingw-w64-x86_64.cmake, launcher/copy_dlls.cmake   cross build
@@ -148,3 +175,12 @@ cmake/mingw-w64-x86_64.cmake, launcher/copy_dlls.cmake   cross build
 * Retry is off in demo mode.
 * A failed load keeps the current game and continues as "Go on".
 * Races "just for kicks" are offered Retry too.
+* The race record is set right before `race_start()` (after the bet, before the race draws random numbers).
+* The opponent fields are set without `opponent_load()` so that the restart draws no extra random numbers.
+
+## 10. Decided by the user (2026-10-29, second round)
+
+* Retry restarts the same race; the garage variant is removed, no option for it.
+* The random-number state is restored ("same seed").
+* Each try costs the race's game time again.
+* The dialog stays the game's own two-button screen 0x1E (Retry / Go on).
