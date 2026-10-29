@@ -37,6 +37,28 @@ static bool rd_ok(u16 fd, u16 off, u16 n)
     return dos_read(fd, ds_ptr(off), n, &got) == 0 && got == n;
 }
 
+/* RETRY: the loader reads through a SaveReader, from a DOS handle (the load screen) or from a checked
+ * memory copy of the file (retry.c). */
+static bool reader_fd_read(SaveReader *rd, u16 off, u16 n) { return rd_ok(rd->fd, off, n); }
+
+static bool reader_mem_read(SaveReader *rd, u16 off, u16 n)
+{
+    if (rd->len - rd->pos < n) return false;
+    for (u16 i = 0; i < n; i++) DSB((u16)(off + i)) = rd->buf[rd->pos + i];
+    rd->pos += n;
+    return true;
+}
+
+void save_reader_fd(SaveReader *rd, u16 fd)
+{
+    *rd = (SaveReader){ .read = reader_fd_read, .fd = fd };
+}
+
+void save_reader_mem(SaveReader *rd, const u8 *buf, u32 len)
+{
+    *rd = (SaveReader){ .read = reader_mem_read, .fd = FD_NONE, .buf = buf, .len = len };
+}
+
 /* 0000:5795 save_part_chain */
 static s16 save_part_chain(u16 fd, u16 p)
 {
@@ -46,13 +68,13 @@ static s16 save_part_chain(u16 fd, u16 p)
 }
 
 /* 0000:57dc load_part_chain: head = DS offset of the chain's head pointer */
-static s16 load_part_chain(u16 fd, u16 head)
+static s16 load_part_chain(SaveReader *rd, u16 head)
 {
     u16 prev = 0;
     if (DSW(head) == 0) return 0;
     DSW(head) = 0;
     for (;;) {
-        if (!rd_ok(fd, FLOW_STK_PART, 8)) return 1;
+        if (!rd->read(rd, FLOW_STK_PART, 8)) return 1;
         u16 p = part_alloc();
         for (u16 i = 0; i < 8; i++) DSB((u16)(p + i)) = DSB((u16)(FLOW_STK_PART + i));
         if (prev) DSW((u16)(prev + 6)) = p;
@@ -78,18 +100,18 @@ static s16 save_car_chain(u16 fd, u16 c, s16 one)
 }
 
 /* 0000:590f load_car_chain: head = DS offset of the list head pointer */
-static s16 load_car_chain(u16 fd, u16 head, s16 one)
+static s16 load_car_chain(SaveReader *rd, u16 head, s16 one)
 {
     u16 prev = 0;
     const u16 rec = FLOW_STK_CAR;
     if (DSW(head) == 0) return 0;
     DSW(head) = 0;
     for (;;) {
-        if (!rd_ok(fd, rec, 0x28)) return 1;
-        if (load_part_chain(fd, (u16)(rec + 6))) return 1;
+        if (!rd->read(rd, rec, 0x28)) return 1;
+        if (load_part_chain(rd, (u16)(rec + 6))) return 1;
         for (u16 k = 0; k < 5; k++)
-            if (load_part_chain(fd, (u16)(rec + 8 + 2 * k))) return 1;
-        if (load_part_chain(fd, (u16)(rec + 0x12))) return 1;
+            if (load_part_chain(rd, (u16)(rec + 8 + 2 * k))) return 1;
+        if (load_part_chain(rd, (u16)(rec + 0x12))) return 1;
         u16 c = car_alloc();
         for (u16 i = 0; i < 0x28; i++) DSB((u16)(c + i)) = DSB((u16)(rec + i));
         if (prev) DSW((u16)(prev + 0x26)) = c;
@@ -98,6 +120,46 @@ static s16 load_car_chain(u16 fd, u16 head, s16 one)
         if (DSW((u16)(c + 0x26)) == 0 || one) return 0;
         DSW((u16)(c + 0x26)) = 0;
     }
+}
+
+/* RETRY: the writing part of save_game_screen 0000:5eea (from the creat on), callable without the
+ * screen: `name` = DGROUP offset of a name built by fl_save_name. The drive letter is refreshed as the
+ * original does right before the creat. On a failed write the file is closed and removed. */
+bool flow_save_write(u16 name)
+{
+    DSL(FLOW_STK_ELAPSED) = DSL(DS_bios_ticks) - DSL(DS_rt_base);
+    DSB(name) = (u8)data_disk_check();
+    u16 fd = FD_NONE;
+    if (dos_creat(ds_str(name), 0, &fd) != 0) return false;
+    if (wr_ok(fd, DS_player_name, 0x24) &&
+        !save_car_chain(fd, DSW(DS_car), 1) && !save_car_chain(fd, DSW(DS_car2), 0) &&
+        !save_part_chain(fd, DSW(DS_spare_parts)) &&
+        wr_ok(fd, 0x4970, 8) && wr_ok(fd, DS_opponents, 0x18C) &&
+        wr_ok(fd, DS_game_clock, 4) && wr_ok(fd, FLOW_STK_ELAPSED, 4) &&
+        wr_ok(fd, DS_course_layout, 2)) {
+        dos_close(fd);
+        return true;
+    }
+    dos_close(fd);
+    dos_remove(ds_str(name));
+    return false;
+}
+
+/* RETRY: the part of load_game_screen 0000:5b4a after the 0x24-byte header has been read into
+ * DS_player_name: pools, cars, parts, the tail, then the car palette, the course and the clock base. */
+bool flow_load_apply(SaveReader *rd)
+{
+    pools_reset(0);                                   /* the header's pointers now mean "present" */
+    if (load_car_chain(rd, DS_car, 1) || load_car_chain(rd, DS_car2, 0) ||
+        load_part_chain(rd, DS_spare_parts) ||
+        !rd->read(rd, 0x4970, 8) || !rd->read(rd, DS_opponents, 0x18C) ||
+        !rd->read(rd, DS_game_clock, 4) || !rd->read(rd, FLOW_STK_ELAPSED, 4) ||
+        !rd->read(rd, DS_course_layout, 2))
+        return false;
+    if (DSW(DS_car)) set_paint_palette((s16)(s8)DSB((u16)(DSW(DS_car) + 4)));
+    track_build_course(DSS(DS_course_layout));
+    DSL(DS_rt_base) = DSL(DS_bios_ticks) - DSL(FLOW_STK_ELAPSED);
+    return true;
 }
 
 /* 0000:59f6 save_slots_scan: DS:4FC2[n] = n if HOTROD<n>.SAV has a readable header; the list
@@ -167,16 +229,10 @@ s16 load_game_screen(void)
     u16 fd = FD_NONE;
     if (dos_open(ds_str(name), 0, &fd) != 0) fd = FD_NONE;
     else if (rd_ok(fd, DS_player_name, 0x24)) {
-        pools_reset(0);                               /* the header's pointers now mean "present" */
-        if (!load_car_chain(fd, DS_car, 1) && !load_car_chain(fd, DS_car2, 0) &&
-            !load_part_chain(fd, DS_spare_parts) &&
-            rd_ok(fd, 0x4970, 8) && rd_ok(fd, DS_opponents, 0x18C) &&
-            rd_ok(fd, DS_game_clock, 4) && rd_ok(fd, FLOW_STK_ELAPSED, 4) &&
-            rd_ok(fd, DS_course_layout, 2)) {
+        SaveReader rd;
+        save_reader_fd(&rd, fd);
+        if (flow_load_apply(&rd)) {
             dos_close(fd);
-            if (DSW(DS_car)) set_paint_palette((s16)(s8)DSB((u16)(DSW(DS_car) + 4)));
-            track_build_course(DSS(DS_course_layout));
-            DSL(DS_rt_base) = DSL(DS_bios_ticks) - DSL(FLOW_STK_ELAPSED);
             cursor_ctl(-2);
             return 0;
         }
@@ -274,27 +330,15 @@ void save_game_screen(void)
         if (ans == -20) dos_remove(ds_str(name));     /* Go ahead */
         if (str_is_blank(DS_edit_name)) fl_strcpy(DS_player_name, (u16)(0x2C02 + DSW((u16)(DS_list_items + 2 * r))));
         else fl_strcpy(DS_player_name, DS_edit_name);
-        DSL(FLOW_STK_ELAPSED) = DSL(DS_bios_ticks) - DSL(DS_rt_base);
-        DSB(name) = (u8)data_disk_check();
-        u16 fd = FD_NONE;
-        if (dos_creat(ds_str(name), 0, &fd) != 0) fd = FD_NONE;
-        else if (wr_ok(fd, DS_player_name, 0x24) &&
-                 !save_car_chain(fd, DSW(DS_car), 1) && !save_car_chain(fd, DSW(DS_car2), 0) &&
-                 !save_part_chain(fd, DSW(DS_spare_parts)) &&
-                 wr_ok(fd, 0x4970, 8) && wr_ok(fd, DS_opponents, 0x18C) &&
-                 wr_ok(fd, DS_game_clock, 4) && wr_ok(fd, FLOW_STK_ELAPSED, 4) &&
-                 wr_ok(fd, DS_course_layout, 2)) {
-            dos_close(fd);
+        if (flow_save_write(name)) {
             cursor_ctl(-2);
             return;
         }
+        /* RETRY: flow_save_write has already closed and removed a half-written file; the original did
+         * that after the message below (no visible difference). */
         cursor_ctl(-2);
         ui_dialog(6);                                 /* "Disk error during Save" */
         cursor_ctl(-4);
-        if ((s16)fd > -1) {
-            dos_close(fd);
-            dos_remove(ds_str(name));
-        }
         save_slots_scan(1);
         cursor_ctl(-4);
     }

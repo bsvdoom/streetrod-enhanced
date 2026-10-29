@@ -97,6 +97,21 @@ s16  new_game_prompt(void);            /* 0000:570c */
 #define FLOW_STK_NAME    0x9480        /* 0x10 hall of fame name edit (hall_of_fame_screen) */
 #define FLOW_STK_FNAME   0x94A0        /* 0x14 "X:HOTROD<n>.SAV" */
 
+/* RETRY: save / load without the screens (flow_save.c). The templates are the ":HOTROD\0" ".SAV\0"
+ * strings the original keeps per routine (any of them gives the same name). */
+#define FLOW_TMPL_SAVE   0x5010
+typedef struct SaveReader {
+    bool (*read)(struct SaveReader *rd, u16 ds_off, u16 n);   /* n bytes into DGROUP at ds_off */
+    u16 fd;
+    const u8 *buf;
+    u32 len, pos;
+} SaveReader;
+void save_reader_fd(SaveReader *rd, u16 fd);
+void save_reader_mem(SaveReader *rd, const u8 *buf, u32 len);
+bool flow_save_write(u16 name);                    /* the save of save_game_screen, no UI */
+bool flow_load_apply(SaveReader *rd);              /* load_game_screen after the header, no UI */
+bool flow_debug_save_main(void);                   /* developer aid SR_DEBUG_SAVE=<in>:<out> */
+
 /* MS C 5.1 runtime helpers on DGROUP strings (flow_util.c) */
 void fl_strcpy(u16 dst, u16 src);                  /* strcpy */
 void fl_strncpy(u16 dst, u16 src, u16 n);          /* strncpy (no NUL when src is longer) */

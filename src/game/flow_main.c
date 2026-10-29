@@ -194,6 +194,7 @@ new_or_load:                                          /* 0000:5050 */
 int game_main(void)
 {
     race_debug_main();                                /* developer aid (SR_DEBUG_RACE), off by default */
+    flow_debug_save_main();                           /* developer aid (SR_DEBUG_SAVE), off by default */
     game_loop();
     platform_exit();
 }

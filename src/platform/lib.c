@@ -11,6 +11,7 @@
 #include "platform/vga.h"
 #include "modules.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -529,6 +530,10 @@ s16 rnd(s16 n)
 {
     if (n <= 0) {
         s16 t = (s16)(u16)(u32)time(NULL);                       /* low word of time(&t) */
+        /* DEVELOPER AID (not part of the original, off by default): SR_DEV_SEED=n replaces the time of
+         * day, so headless test runs are reproducible. */
+        const char *seed = getenv("SR_DEV_SEED");
+        if (seed && *seed) t = (s16)atoi(seed);
         s16 rem;
         idiv32_16(t, 0x7530, &rem);
         s16 dx = (s16)(rem + 1);
