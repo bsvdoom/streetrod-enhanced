@@ -76,10 +76,12 @@ log BAD | grep -q 'retry: check failed' || fail "bad file: not refused: $(log BA
 log BAD | grep -q 'retry: applied' && fail "bad file: applied"
 pass "damaged slot: Retry failed, game continues"
 
-# without --retry: no save, no offer, no slot 16
+# without --retry: no save, no offer, slot 16 untouched (Game/ may already hold one from playing)
 fresh_game "$d"; before=$(files_hash "$d")
+s16() { ls "$d/Game" | grep -ix 'hotrod16.sav' | while read -r f; do sha256sum "$d/Game/$f"; done; }
+s16_before=$(s16)
 SR_DEV_SEED=7 SR_DEBUG_RACE=drag SR_RETRY_FORCE=01 run_headless "$d" 40 "$R_KEYS"
 grep -q 'retry:' "$d/stderr.txt" && fail "retry active without --retry"
-[ -z "$(ls "$d/Game" | grep -i hotrod16)" ] || fail "slot 16 written without --retry"
+[ "$(s16)" = "$s16_before" ] || fail "slot 16 written without --retry"
 [ "$(files_hash "$d")" = "$before" ] || fail "saved games changed without --retry"
 pass "without --retry nothing happens"

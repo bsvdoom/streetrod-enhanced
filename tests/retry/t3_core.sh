@@ -81,9 +81,11 @@ pass "outcome classification"
 
 # without --retry nothing is saved
 fresh_game "$d"
+s16() { ls "$d/Game" | grep -ix 'hotrod16.sav' | while read -r f; do sha256sum "$d/Game/$f"; done; }
+s16_before=$(s16)
 SR_DEV_SEED=1 SR_DEBUG_RETRY=save run_headless "$d" 20 ""
 grep -q 'retry: saved' "$d/stderr.txt" && fail "saved without --retry"
-[ -z "$(ls "$d/Game" | grep -i hotrod16)" ] || fail "slot 16 written without --retry"
+[ "$(s16)" = "$s16_before" ] || fail "slot 16 written without --retry"
 # demo forces it off
 SR_DEV_SEED=1 SR_DEBUG_RETRY=save run_headless "$d" 20 "" --retry demo
 grep -q 'retry: saved' "$d/stderr.txt" && fail "saved in demo mode"

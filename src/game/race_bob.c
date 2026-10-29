@@ -663,12 +663,12 @@ void bob_drive_in(void)
                 DSB(BOB_NAME_BUF) = 0;
                 status_print(DSS(BOB_NAME_X), ds_str(0x5335), DSS(BOB_NAME_W));
                 s16 r = (s16)race_results();
-                drv_pal_black();
-                opp_palette_set(-1);
                 if (retry_offer(r)) {                       /* RETRY: lost, and the player chose Retry: */
                     ui_pop(1);                              /* no stats, King penalty, jail or drive home; */
-                    return;                                 /* game_loop loads the slot */
-                }
+                    return;                                 /* game_loop loads the slot. Asked before */
+                }                                           /* drv_pal_black, while the palette is on */
+                drv_pal_black();
+                opp_palette_set(-1);
                 if (DSW(DS_bet_button) != 1) DSW(DS_races_total)++;
                 if (DSW(DS_vs_king)) {
                     if (!DSW(DS_player_won)) {

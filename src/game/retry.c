@@ -364,19 +364,6 @@ bool retry_debug_main(void)
             fprintf(stderr, "debug retry: classify %u %s %s\n", i, retry_outcome_name(o), good ? "ok" : " bad ");
             if (!good) rc = 1;
         }
-    } else if (!strncmp(c, "dumpui", 6)) {
-        s16 scr = (s16)strtol(c + 7, NULL, 0);
-        u16 r = DSW((u16)(0x2BAD + 2 * scr));
-        for (int k = 0; k < 10; k++) {
-            u16 o = (u16)(0x09F4 + 0x12 * r);
-            s16 t = DSS(o), lab = DSS((u16)(o + 4)), nx = DSS((u16)(o + 0x10));
-            fprintf(stderr, "rec %u @%04X type %d style %d label %#x code %d (%d,%d)-(%d,%d) next %d '%s'\n", r, o, t,
-                    DSS((u16)(o + 2)), (u16)lab, DSS((u16)(o + 6)), DSS((u16)(o + 8)), DSS((u16)(o + 10)),
-                    DSS((u16)(o + 12)), DSS((u16)(o + 14)), nx, t > 0 && t < 15 ? ds_str((u16)(0x239E + lab)) : "");
-            r++;
-        }
-        for (u16 si = DSW((u16)(0x579F + scr * 2)); DSB(si); si += 2)
-            fprintf(stderr, "key scan %02X -> %02X\n", DSB(si), DSB((u16)(si + 1)));
     } else {
         fprintf(stderr, "debug retry: unknown case %s\n", c);
         rc = 2;
