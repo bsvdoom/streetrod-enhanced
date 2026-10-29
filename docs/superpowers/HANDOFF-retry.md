@@ -1,7 +1,7 @@
 # Retry mod — handoff (continue from here in a new conversation)
 
-Last update: 2026-10-29 12:59 UTC. Branch `mod/retry` of `streetrod-enhanced`. Tasks T1-T4 done and
-confirmed by the user's own playtest on Linux. **Next: Task 5** (do not start without the user's go-ahead).
+Last update: 2026-10-29 23:00 UTC. Branch `mod/retry` of `streetrod-enhanced`. Tasks T1-T4 and T4b (Retry
+restarts the same race) done and confirmed by the user's own playtest on Linux. Working on Task 5.
 
 ## How to resume
 
@@ -39,6 +39,7 @@ Windows target, cross-built here with mingw; enable / disable in the launcher; d
 | T2 save writer / loader without the screens | done | a35bf27 |
 | T3 retry core (options, silent save, checked load, classify) | done | 02b1cae |
 | **T4 offer dialog + engine call sites** | done; user-tested OK | 53b87ed, 8fc9a72 |
+| T4b Retry restarts the same race (opponent, bet, rnd state) | done; user-tested OK (King not hand-tested) | a19f701, ba6191b |
 | T5 Windows game build (mingw) | todo | |
 | T6 Launcher: Retry option, cross-built | todo | |
 | T7 Docs + Windows zip | todo | |
@@ -116,3 +117,16 @@ T5 Windows game build 15–30 min, T6 launcher 20–40 min (riskiest: wx cross b
 * `deps/wx-3.2.12/` (wxMSW 3.2.12 gcc13.2 x64 Dev + ReleaseDLL + headers, SHA-256 checked; the `.7z`
   archives and `deps/wx_assets.txt` are still there, deletion was not approved)
 * Tools present: mingw-w64 gcc 13 (win32), wine 10, cmake 4.2, ninja, libsdl3-dev, libwxgtk3.2-dev, 7z.
+
+## Ideas (not planned, user: "later")
+
+* **King penalty on Retry** (2026-10-29): when the King beats you, apply -3 drag / -2 road as the original
+  does, then recompute `king_status()`; if he would no longer accept, no Retry offer; if he would, Retry
+  keeps the penalties (re-applied after the reload). Code sketch: only `src/game/retry.c` changes:
+  `static int king_penalties` (reset in `retry_before_race`); in `retry_offer`, for `RO_KING_LOST`,
+  `king_penalties++`, temporarily subtract `3*k`/`2*k`... (as `bob_drive_in` would), call `king_status()`,
+  restore, no offer unless 0; in `retry_restart_race`, after `retry_apply()`, subtract
+  `3*king_penalties` / `2*king_penalties`. Tests: wins in the `retry: start` line; enough wins: offer and
+  reduced wins on the restart; few wins: no offer; two losses: -6/-4. Note: the King accepts when all
+  other opponents are gone, or with >= 6 drag and >= 6 road wins and wins >= races/2 (`king_status`).
+* **GitHub Actions release build** from a tag (open question for the user).
