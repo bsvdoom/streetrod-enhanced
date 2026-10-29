@@ -98,14 +98,16 @@ static void race_record_rnd(void)
     DSW(DS_rnd_s1) = rec.rnd[0]; DSW(DS_rnd_s2) = rec.rnd[1]; DSW(DS_rnd_s3) = rec.rnd[2];
 }
 
-/* "retry: start ..." right before race_start: what the race is run with (tests compare these). */
+/* "retry: start ..." right before race_start: what the race is run with (tests compare these). pal0c is
+ * the shadow of palette register 0Ch, which drive_run lends to the opponent: equal on every start means it
+ * was given back before the restart. */
 static void log_start(void)
 {
     if (!enabled) return;
-    logf_("start opp %u type %u bet %u/%u/%u king %u/%u rnd %u %u %u money %ld clock %lu",
+    logf_("start opp %u type %u bet %u/%u/%u king %u/%u rnd %u %u %u money %ld clock %lu pal0c %u",
           DSW(DS_opp_index), DSW(DS_race_type), DSW(DS_bet_kind), DSW(DS_bet_amount), DSW(DS_bet_button),
           DSW(DS_king_drag_won), DSB(DS_king_ready), DSW(DS_rnd_s1), DSW(DS_rnd_s2), DSW(DS_rnd_s3),
-          (long)DSSL(DS_money), (unsigned long)DSL(DS_game_clock));
+          (long)DSSL(DS_money), (unsigned long)DSL(DS_game_clock), DSB((u16)(DS_pal_shadow + 0x0C)));
 }
 
 void retry_before_race(void)
