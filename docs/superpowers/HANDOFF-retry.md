@@ -1,6 +1,7 @@
 # Retry mod — handoff (continue from here in a new conversation)
 
-Last update: 2026-10-29 03:27 UTC. Branch `mod/retry` of `streetrod-enhanced`, HEAD `a21663a` (WIP commit).
+Last update: 2026-10-29 12:59 UTC. Branch `mod/retry` of `streetrod-enhanced`. Tasks T1-T4 done and
+confirmed by the user's own playtest on Linux. **Next: Task 5** (do not start without the user's go-ahead).
 
 ## How to resume
 
@@ -37,12 +38,22 @@ Windows target, cross-built here with mingw; enable / disable in the launcher; d
 | T1 Linux build + headless test harness | done | c9ea3fa |
 | T2 save writer / loader without the screens | done | a35bf27 |
 | T3 retry core (options, silent save, checked load, classify) | done | 02b1cae |
-| **T4 offer dialog + engine call sites** | done (black-dialog bug fixed, real Bob's test) | 53b87ed |
+| **T4 offer dialog + engine call sites** | done; user-tested OK | 53b87ed, 8fc9a72 |
 | T5 Windows game build (mingw) | todo | |
 | T6 Launcher: Retry option, cross-built | todo | |
 | T7 Docs + Windows zip | todo | |
 
-### Task 4: what is left
+### Task 4: history (done)
+
+Both bugs below were found by the user playing on Linux and are fixed, each with a test that failed on
+the old code (`tests/retry/t4_bob.sh`, the real Bob's path):
+
+* black dialog: `retry_offer` now runs right after `race_results()`, before `drv_pal_black()` (53b87ed);
+* purple / cyan garage floor after Retry: the race lends palette register 0Ch to the opponent's paint;
+  the Retry branch now does `drv_pal_black(); opp_palette_set(-1);` before leaving, as the normal path
+  does (8fc9a72). The test checks the floor colour.
+
+The notes below are the original WIP notes, kept for reference.
 
 1. **Bug (found by the user playing on Linux):** at Bob's the Retry dialog is invisible (black screen);
    keys work (Enter = Retry reloads, G = Go on), and JUMPED_LIGHT is logged correctly.
@@ -86,6 +97,13 @@ Windows target, cross-built here with mingw; enable / disable in the launcher; d
   (`Game/` is a copy; the user's originals are in the parent folder).
 
 ## Remaining tasks and estimates
+
+Re-estimated after Task 4 (pure coding runs at about a third of the estimate; anything checked on the
+screen or through game runs lands near the top of the range): T5 Windows game build 15–30 min; T6
+launcher 30–50 min (wx cross build is the risk); T7 docs + zip 10–15 min; final independent review of
+the branch + fixes 15–25 min. Total about 1 h 10 min to 2 h.
+
+Original notes:
 
 Measured so far (estimate → actual): T1 10–15 → 3.5 min; T2 15–25 → 6 min; T3 20–35 → 3.5 min;
 T4 25–45 → 20+ min (real-flow scripting and the palette bug made it the first task over its low end).
