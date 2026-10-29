@@ -32,6 +32,11 @@ done
 [ "$seen" = 1 ] || fail "the Retry dialog was never visible (black screen)"
 
 # and the garage follows: the roof beams make the top-left corner orange-brown
-c=$(convert "$(ls "$d"/snap/*.bmp | tail -1)" -crop 40x40+20+20 -format '%[fx:mean.r-mean.b]' info:)
+last="$(ls "$d"/snap/*.bmp | tail -1)"
+c=$(convert "$last" -crop 40x40+20+20 -format '%[fx:mean.r-mean.b]' info:)
 awk -v c="$c" 'BEGIN { exit !(c > 0.25) }' || fail "no garage after the Retry"
+# with the garage's own colours: the floor in front of the car is grey, not the opponent's paint (register
+# 0Ch, which the race lends to the opponent and bob_drive_in gives back with opp_palette_set(-1))
+f=$(convert "$last" -crop 120x30+560+690 -format '%[fx:mean.r-mean.g]' info:)
+awk -v f="$f" 'BEGIN { exit !(f < 0.15) }' || fail "garage floor in the opponent's colour after the Retry (r-g $f)"
 pass "real Bob's race: visible dialog, Retry restores the state, garage shown"
