@@ -37,7 +37,7 @@ Windows target, cross-built here with mingw; enable / disable in the launcher; d
 | T1 Linux build + headless test harness | done | c9ea3fa |
 | T2 save writer / loader without the screens | done | a35bf27 |
 | T3 retry core (options, silent save, checked load, classify) | done | 02b1cae |
-| **T4 offer dialog + engine call sites** | **WIP, one bug** | a21663a |
+| **T4 offer dialog + engine call sites** | done (black-dialog bug fixed, real Bob's test) | 53b87ed |
 | T5 Windows game build (mingw) | todo | |
 | T6 Launcher: Retry option, cross-built | todo | |
 | T7 Docs + Windows zip | todo | |
