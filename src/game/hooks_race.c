@@ -7,6 +7,7 @@
 
 #include "game/flow.h"
 #include "game/garage.h"
+#include "game/retry.h"
 #include "modules.h"
 #include "platform/platform.h"
 #include "platform/video.h"
@@ -64,12 +65,24 @@ bool race_debug_main(void)
         DSW(DS_bet_kind) = 0;
         DSW(DS_bet_amount) = 0;
         DSW(DS_bet_button) = 1;
+        retry_debug_race_before();                 /* RETRY: setup aids and the save, as challenge() */
         race_start();
-        race_results();
+        retry_debug_race_after();                  /* RETRY: SR_RETRY_FORCE */
+        s16 r = (s16)race_results();
+        retry_debug_race_done(r);                  /* RETRY: the offer, as bob_drive_in */
     } else {
         DSW(DS_drive_dest) = 2;
         drive_to();
-        if (strcmp(mode, "bob") == 0) bob_drive_in();
+        if (strcmp(mode, "bob") == 0) {
+            retry_debug_race_before_bob();         /* RETRY: state line */
+            bob_drive_in();
+            if (retry_take_request()) {            /* RETRY: as game_loop after bob_drive_in */
+                retry_apply();
+                DSW(DS_game_end_flags) = 0;
+                retry_debug_state("after");
+                garage_screen(1);                  /* shows the garage; the test stops the run */
+            }
+        }
     }
     platform_exit();
 }

@@ -12,6 +12,7 @@
 #include "game/race_xref.h"
 #include "game/ui.h"
 #include "game/flow.h"
+#include "game/retry.h"
 #include "platform/platform.h"
 #include "platform/video.h"
 #include "sound/sound.h"
@@ -395,6 +396,7 @@ s16 challenge(s16 king)
             DSW(DS_bet_kind) = 5;
         }
         DSW(DS_bet_amount) = 0;
+        if (retry_enabled()) retry_before_race();   /* RETRY: the state before the race */
         race_start();
         flow_clock_add(DSW(DS_race_type) == 0 ? 0x444 : 0x777);
         return 2;
@@ -442,6 +444,7 @@ s16 challenge(s16 king)
             screen_put_bitmap_mirror(save, sx, sy);
             s16 k = rnd(3);
             msg_box(DSS((u16)(0x5210 + DSS(DS_race_type) * 6 + k * 2)));
+            if (retry_enabled()) retry_before_race();   /* RETRY: the state before the race */
             race_start();
             flow_clock_add(DSW(DS_race_type) == 0 ? 0x444 : 0x777);
             return 2;
@@ -662,6 +665,10 @@ void bob_drive_in(void)
                 s16 r = (s16)race_results();
                 drv_pal_black();
                 opp_palette_set(-1);
+                if (retry_offer(r)) {                       /* RETRY: lost, and the player chose Retry: */
+                    ui_pop(1);                              /* no stats, King penalty, jail or drive home; */
+                    return;                                 /* game_loop loads the slot */
+                }
                 if (DSW(DS_bet_button) != 1) DSW(DS_races_total)++;
                 if (DSW(DS_vs_king)) {
                     if (!DSW(DS_player_won)) {

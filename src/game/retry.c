@@ -10,6 +10,7 @@
 #include "game/flow.h"
 #include "game/garage.h"
 #include "game/race.h"
+#include "game/ui.h"
 #include "host.h"
 #include "platform/platform.h"
 #include "platform/video.h"
@@ -148,11 +149,148 @@ void retry_apply(void)
 
 void retry_request(void) { requested = true; }
 
+/* ---- the dialog: screen 0x1E ("The old game will be replaced !" with "Go ahead" -20 / "Forget it" -21,
+ * keys Enter / G -> -20, Esc / F -> -21) shown with other texts. The three label words of its records
+ * and the four scan codes of its key map are changed for the call and restored afterwards. The texts
+ * go into the unused part of the DGROUP stack (as FLOW_STK_*), referred to by label offsets from DS:239E. */
+#define DLG_SCREEN    0x1E
+#define DLG_REC_YES   270           /* "Go ahead", code -20 */
+#define DLG_REC_NO    271           /* "Forget it", code -21 */
+#define DLG_REC_TEXT  272           /* the centred line */
+#define DLG_TEXT_BUF  0x94C0        /* 3 strings, below DS:990E */
+#define UI_LABELS     0x239E
+
+static u16 put_text(u16 at, const char *s)
+{
+    u16 i = 0;
+    for (; s[i]; i++) DSB((u16)(at + i)) = (u8)s[i];
+    DSB((u16)(at + i)) = 0;
+    return (u16)(i + 1);
+}
+
+/* true = the first button. Keys: R / Enter = first, G / Esc = second. */
+static bool dialog_ask(const char *text, const char *yes, const char *no)
+{
+    static const u16 recs[3] = { DLG_REC_YES, DLG_REC_NO, DLG_REC_TEXT };
+    const char *str[3] = { yes, no, text };
+    u16 saved_lab[3];
+    u16 at = DLG_TEXT_BUF;
+    for (int i = 0; i < 3; i++) {
+        u16 lab = (u16)(0x09F4 + 0x12 * recs[i] + 4);
+        saved_lab[i] = DSW(lab);
+        DSW(lab) = (u16)(at - UI_LABELS);
+        at = (u16)(at + put_text(at, str[i]));
+    }
+    /* key map {scan, key}: 01 Esc, 21 F -> no; 1C Enter, 22 G -> yes. Here: 01 Esc, 22 G -> no;
+     * 1C Enter, 13 R -> yes. */
+    u16 km = DSW((u16)(0x579F + DLG_SCREEN * 2));
+    u8 saved_km[8];
+    for (int i = 0; i < 8; i++) saved_km[i] = DSB((u16)(km + i));
+    u8 no_key = DSB((u16)(km + 1)), yes_key = DSB((u16)(km + 5));
+    const u8 map[8] = { 0x01, no_key, 0x22, no_key, 0x1C, yes_key, 0x13, yes_key };
+    for (int i = 0; i < 8; i++) DSB((u16)(km + i)) = map[i];
+
+    cursor_ctl(-2);
+    s16 r = ui_dialog(DLG_SCREEN);
+    cursor_ctl(-4);
+
+    for (int i = 0; i < 8; i++) DSB((u16)(km + i)) = saved_km[i];
+    for (int i = 0; i < 3; i++) DSW((u16)(0x09F4 + 0x12 * recs[i] + 4)) = saved_lab[i];
+    return r == -20;
+}
+
+bool retry_offer(s16 r)
+{
+    if (!enabled) return false;
+    RetryOutcome o = retry_classify(r);
+    logf_("outcome %s", retry_outcome_name(o));
+    if (!retry_is_loss(o) || !saved_ok) return false;
+    saved_ok = false;                                 /* one offer per save */
+    logf_("offer");
+    if (!dialog_ask("Lost it ? Run that race again ?", "Retry", "Go on")) return false;
+    if (!retry_check()) {
+        dialog_msg("Retry failed !");                 /* the game's own message box, OK */
+        return false;
+    }
+    retry_request();
+    return true;
+}
+
 bool retry_take_request(void)
 {
     bool r = requested;
     requested = false;
     return r;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* DEVELOPER AIDS for SR_DEBUG_RACE=drag|road (hooks_race.c), with --retry (tests/retry/t4_offer.sh):
+ *   SR_DEBUG_MONEY=n, SR_DEBUG_BET=k (bet kind 0..5, amount from the game's table), SR_DEBUG_WINS=n
+ *   (drag and road wins) set up the game before the race;
+ *   SR_RETRY_FORCE=<hex> replaces the race's result (W = a win); SR_RETRY_TRUNCATE=1 cuts the slot file
+ *   by one byte right after the save. The state line "money .. drag .. road .. car .. parts .." is
+ *   printed before the race and after the offer (and the load, when Retry was chosen). */
+static void debug_state(const char *when)
+{
+    u16 car = DSW(DS_car);
+    fprintf(stderr, "debug race: %s money %ld drag %d road %d car %u model %d races %d\n", when,
+            (long)DSSL(DS_money), DSS(DS_drag_wins), DSS(DS_road_wins), car ? 1u : 0u,
+            car ? DSS((u16)(car + 2)) : -1, DSS(DS_races_total));
+}
+
+void retry_debug_state(const char *when) { debug_state(when); }
+void retry_debug_race_before_bob(void) { debug_state("before"); }
+
+void retry_debug_race_before(void)
+{
+    const char *v;
+    if ((v = getenv("SR_DEBUG_MONEY"))) DSL(DS_money) = (u32)atol(v);
+    if ((v = getenv("SR_DEBUG_WINS"))) DSW(DS_drag_wins) = DSW(DS_road_wins) = (u16)atoi(v);
+    if ((v = getenv("SR_DEBUG_BET"))) {
+        static const s16 amount[6] = { 0, 10, 0x32, 0x19, 0x64, 0 };
+        int k = atoi(v) & 7;
+        if (k > 5) k = 5;
+        DSW(DS_bet_kind) = (u16)k;
+        DSW(DS_bet_amount) = (u16)amount[k];
+        DSW(DS_bet_button) = 2;
+    }
+    if (enabled) {
+        retry_before_race();
+        if (getenv("SR_RETRY_TRUNCATE")) {
+            char base[16];
+            snprintf(base, sizeof base, "HOTROD%d.SAV", slot);
+            char *path = host_game_path(base, false);
+            FILE *f = path ? fopen(path, "rb") : NULL;
+            if (f) {                                  /* portable: read it, write it back one byte shorter */
+                static u8 tmp[FILE_MAX];
+                size_t n = fread(tmp, 1, sizeof tmp, f);
+                fclose(f);
+                f = n > 0 ? fopen(path, "wb") : NULL;
+                if (f) { fwrite(tmp, 1, n - 1, f); fclose(f); }
+            }
+            if (path) host_free(path);
+        }
+    }
+    debug_state("before");
+}
+
+void retry_debug_race_after(void)
+{
+    const char *v = getenv("SR_RETRY_FORCE");
+    if (!v || !*v) return;
+    if (*v == 'W') {
+        DSB(DS_opp_result) |= 1;
+    } else {
+        DSB(DS_opp_result) &= (u8)~1;
+        DSW(DS_player_result) = (u16)strtol(v, NULL, 16);
+        DSB(DS_tires_blown) = 0;
+    }
+}
+
+void retry_debug_race_done(s16 r)
+{
+    if (retry_offer(r) && retry_take_request()) retry_apply();
+    debug_state("after");
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -226,6 +364,19 @@ bool retry_debug_main(void)
             fprintf(stderr, "debug retry: classify %u %s %s\n", i, retry_outcome_name(o), good ? "ok" : " bad ");
             if (!good) rc = 1;
         }
+    } else if (!strncmp(c, "dumpui", 6)) {
+        s16 scr = (s16)strtol(c + 7, NULL, 0);
+        u16 r = DSW((u16)(0x2BAD + 2 * scr));
+        for (int k = 0; k < 10; k++) {
+            u16 o = (u16)(0x09F4 + 0x12 * r);
+            s16 t = DSS(o), lab = DSS((u16)(o + 4)), nx = DSS((u16)(o + 0x10));
+            fprintf(stderr, "rec %u @%04X type %d style %d label %#x code %d (%d,%d)-(%d,%d) next %d '%s'\n", r, o, t,
+                    DSS((u16)(o + 2)), (u16)lab, DSS((u16)(o + 6)), DSS((u16)(o + 8)), DSS((u16)(o + 10)),
+                    DSS((u16)(o + 12)), DSS((u16)(o + 14)), nx, t > 0 && t < 15 ? ds_str((u16)(0x239E + lab)) : "");
+            r++;
+        }
+        for (u16 si = DSW((u16)(0x579F + scr * 2)); DSB(si); si += 2)
+            fprintf(stderr, "key scan %02X -> %02X\n", DSB(si), DSB((u16)(si + 1)));
     } else {
         fprintf(stderr, "debug retry: unknown case %s\n", c);
         rc = 2;

@@ -28,4 +28,16 @@ void retry_apply(void);
 void retry_request(void);                      /* bob_drive_in: the player chose Retry */
 bool retry_take_request(void);                 /* game_loop: true once per request */
 
+/* bob_drive_in, right after race_results() returned r: after a lost race (and a successful save before
+ * it) asks "Retry" / "Go on". True = Retry chosen and the slot checked (the request is set); the caller
+ * leaves Bob's at once. A failed check shows "Retry failed !" and returns false. */
+bool retry_offer(s16 r);
+
+/* Developer aids for the race path of SR_DEBUG_RACE (hooks_race.c): before / after the race. */
+void retry_debug_race_before(void);
+void retry_debug_race_after(void);
+void retry_debug_race_done(s16 r);             /* the offer (and the load) as bob_drive_in would */
+void retry_debug_race_before_bob(void);        /* SR_DEBUG_RACE=bob: the state line before Bob's */
+void retry_debug_state(const char *when);      /* "debug race: <when> money .. drag .. road .." */
+
 bool retry_debug_main(void);                   /* developer aid SR_DEBUG_RETRY=<case> */
