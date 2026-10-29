@@ -8,3 +8,4 @@ build*/
 *.dll
 *.log
 __pycache__/
+/build-launcher-linux/

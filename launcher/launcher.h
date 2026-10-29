@@ -61,6 +61,7 @@ private:
     wxCheckBox* demo_ = nullptr;
     wxCheckBox* autoDrive_ = nullptr;
     wxCheckBox* noMouse_ = nullptr;
+    wxCheckBox* retry_ = nullptr;       // --retry (not in the original)
     wxChoice* scale_ = nullptr;
     wxCheckBox* fullscreen_ = nullptr;
     wxChoice* graphics_ = nullptr;   // enhanced / original

@@ -1,10 +1,18 @@
 # Copies every DLL the launcher needs from outside Windows (the wxWidgets DLLs and what they
 # load in turn: libstdc++, libpng, libtiff, ...) next to it, so it starts without MSYS2 on the PATH.
-#   cmake -DEXE=<launcher> -DSEARCH=<dir with the DLLs> [-DCMAKE_OBJDUMP=<objdump>] -P copy_dlls.cmake
+#   cmake -DEXE=<launcher> -DSEARCH=<dir with the DLLs>[|<dir>...] [-DCMAKE_OBJDUMP=<objdump>] -P copy_dlls.cmake
 if(POLICY CMP0207)
     cmake_policy(SET CMP0207 NEW)
 endif()
+string(REPLACE "|" ";" SEARCH "${SEARCH}")
 get_filename_component(dest "${EXE}" DIRECTORY)
+# Run from Linux for a cross build (cmake/mingw-w64-x86_64.cmake) the script mode does not know the target
+# is Windows: say so, and read the PE imports with the mingw objdump.
+if(NOT WIN32)
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "windows+pe")
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "objdump")
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "${CMAKE_OBJDUMP}")
+endif()
 file(GET_RUNTIME_DEPENDENCIES
     EXECUTABLES "${EXE}"
     DIRECTORIES ${SEARCH}

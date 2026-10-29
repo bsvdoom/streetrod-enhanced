@@ -70,17 +70,7 @@ bool IsDosProgram(const wxString& path) {
     return !(sig[0] == 'P' && sig[1] == 'E' && sig[2] == 0 && sig[3] == 0);
 }
 
-bool LaunchGame(const GameOptions& o, wxString& error) {
-    if (!wxFileName::FileExists(o.program)) {
-        error = wxString::Format("The game's program isn't there:\n\n%s", o.program);
-        return false;
-    }
-    if (IsDosProgram(o.program)) {
-        error = wxString::Format("%s is the original DOS game, which Windows can't run. The program to start "
-                                 "is streetrod-enhanced.exe:\n\n%s", wxFileName(o.program).GetFullName(),
-                                 DefaultProgram());
-        return false;
-    }
+std::vector<wxString> GameArguments(const GameOptions& o) {
     std::vector<wxString> args{o.program,
                                "--game-dir", o.gameDir,
                                "--scale", wxString::Format("%d", o.scale)};
@@ -94,10 +84,26 @@ bool LaunchGame(const GameOptions& o, wxString& error) {
     // The volumes only when turned down, so the default command line stays as it was.
     if (o.sounds.music != 100) args.insert(args.end(), {"--music-volume", wxString::Format("%d", o.sounds.music)});
     if (o.sounds.effects != 100) args.insert(args.end(), {"--sfx-volume", wxString::Format("%d", o.sounds.effects)});
+    if (o.retry) args.push_back("--retry");  // only when ticked, so the default command line stays as it was
     // The original's own command-line switches, passed on as the port receives them.
     if (o.noMouse) args.push_back("nomouse");
     if (o.demo) args.push_back("demo");
     if (o.autoDrive) args.push_back("auto");
+    return args;
+}
+
+bool LaunchGame(const GameOptions& o, wxString& error) {
+    if (!wxFileName::FileExists(o.program)) {
+        error = wxString::Format("The game's program isn't there:\n\n%s", o.program);
+        return false;
+    }
+    if (IsDosProgram(o.program)) {
+        error = wxString::Format("%s is the original DOS game, which Windows can't run. The program to start "
+                                 "is streetrod-enhanced.exe:\n\n%s", wxFileName(o.program).GetFullName(),
+                                 DefaultProgram());
+        return false;
+    }
+    const std::vector<wxString> args = GameArguments(o);
 
     std::vector<std::wstring> wide;
     for (const wxString& a : args) wide.push_back(a.ToStdWstring());

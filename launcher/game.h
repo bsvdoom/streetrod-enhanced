@@ -4,6 +4,8 @@
 
 #include <wx/string.h>
 
+#include <vector>
+
 // A game folder as the launcher sees it.
 struct GameFolder {
     wxString missing;       // the first of the game's files that isn't there, empty if all are
@@ -43,8 +45,12 @@ struct GameOptions {
     int resScale = 4;       // --res-scale: the picture is 320x200 times this
     int aa = 2;             // --aa: anti-aliasing, aa x aa samples per pixel
     bool town = true;       // --town on|off: the drives through town enhanced too
+    bool retry = false;     // --retry: after a lost race at Bob's, offer to run the same race again
     Sounds sounds;
 };
+
+// The command line LaunchGame starts the game with (program first).
+std::vector<wxString> GameArguments(const GameOptions& options);
 
 // Starts the game. On failure returns false and says why in `error`.
 bool LaunchGame(const GameOptions& options, wxString& error);

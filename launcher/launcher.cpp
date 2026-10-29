@@ -147,6 +147,7 @@ LauncherFrame::LauncherFrame()
     demo_->SetValue(settings::GetInt(SECTION, "Demo", 0) != 0);
     autoDrive_->SetValue(settings::GetInt(SECTION, "Auto", 0) != 0);
     noMouse_->SetValue(settings::GetInt(SECTION, "NoMouse", 0) != 0);
+    retry_->SetValue(settings::GetInt(SECTION, "Retry", 0) != 0);
     scale_->SetSelection(
         wxMax(MIN_SCALE, wxMin(MAX_SCALE, settings::GetInt(SECTION, "Scale", DEFAULT_SCALE))) - MIN_SCALE);
     fullscreen_->SetValue(settings::GetInt(SECTION, "Fullscreen", 0) != 0);
@@ -224,13 +225,19 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     autoDrive_->SetToolTip("The original's \"auto\" switch: the computer steers, accelerates and shifts in races.");
     noMouse_ = new wxCheckBox(sb, wxID_ANY, "&No mouse (keyboard and joystick only)");
     noMouse_->SetToolTip("The original's \"nomouse\" switch.");
+    retry_ = new wxCheckBox(sb, wxID_ANY, "&Retry a lost race (the same race again)");
+    retry_->SetToolTip("Not in the original: before each race at Bob's the game is saved in an extra slot (16, "
+                       "never shown in the save and load lists); after a lost race it offers Retry / Go on, "
+                       "and Retry runs the same race again. Each try costs the race's time. Off in the demo.");
     // One column, indented like the rows above: the same left margin (gap) for every checkbox.
     auto* switches = new wxBoxSizer(wxVERTICAL);
     switches->Add(demo_);
     switches->Add(autoDrive_, 0, wxTOP, small);
     switches->Add(noMouse_, 0, wxTOP, small);
+    switches->Add(retry_, 0, wxTOP, small);
     startBox->Add(switches, 0, wxALL, gap);
     cars_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateState(); });
+    demo_->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { UpdateState(); });
 
     // Options
     auto* optionsBox = new wxStaticBoxSizer(wxVERTICAL, page, "Options");
@@ -476,6 +483,7 @@ void LauncherFrame::UpdateState() {
     resolution_->Enable(enhanced);
     aa_->Enable(enhanced);
     town_->Enable(enhanced);
+    retry_->Enable(!demo_->GetValue());               // the game switches Retry off in the demo
     book_->GetPage(PAGE_MAIN)->Layout();
     if (book_->GetSelection() == PAGE_MAIN) FitPage();  // the notes change the page's size
 }
@@ -506,6 +514,7 @@ void LauncherFrame::Play() {
     options.demo = demo_->GetValue();
     options.autoDrive = autoDrive_->GetValue();
     options.noMouse = noMouse_->GetValue();
+    options.retry = retry_->GetValue() && !demo_->GetValue();
     options.scale = scale_->GetSelection() + MIN_SCALE;
     options.fullscreen = fullscreen_->GetValue();
     options.classic = graphics_->GetSelection() == 1;
@@ -528,6 +537,7 @@ void LauncherFrame::Save() {
     settings::SetInt(SECTION, "Demo", demo_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Auto", autoDrive_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "NoMouse", noMouse_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "Retry", retry_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Scale", scale_->GetSelection() + MIN_SCALE);
     settings::SetInt(SECTION, "Fullscreen", fullscreen_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Classic", graphics_->GetSelection() == 1 ? 1 : 0);

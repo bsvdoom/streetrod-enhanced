@@ -22,4 +22,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 # SDL3_DIR / wxWidgets folders are given as absolute paths outside the sysroot
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
 
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic")
+# -static-libgcc/-static-libstdc++ for the runtime; winpthread (used by libstdc++ and SDL's callers) from its
+# static archive. Not --whole-archive: that would also pull in winpthread's VERSION resource, which clashes
+# with the launcher's own (app.rc).
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic")
