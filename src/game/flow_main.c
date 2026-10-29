@@ -6,6 +6,7 @@
 #include "game/garage.h"
 #include "game/ui.h"
 #include "game/race.h"
+#include "game/retry.h"
 #include "platform/platform.h"
 #include "platform/video.h"
 #include "sound/sound.h"
@@ -195,6 +196,7 @@ int game_main(void)
 {
     race_debug_main();                                /* developer aid (SR_DEBUG_RACE), off by default */
     flow_debug_save_main();                           /* developer aid (SR_DEBUG_SAVE), off by default */
+    retry_debug_main();                               /* developer aid (SR_DEBUG_RETRY), off by default */
     game_loop();
     platform_exit();
 }

@@ -30,13 +30,14 @@
 #include "platform/ega.h"
 #include "platform/platform.h"
 #include "enhanced/enhanced.h"
+#include "game/retry.h"
 
 #define MAX_GAME_ARGS 16
 
 static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] "
-                    "[--music-volume N] [--sfx-volume N] "
+                    "[--music-volume N] [--sfx-volume N] [--retry] [--retry-slot N] "
                     "[1] [nomouse] [demo] [auto] [nouemem]\n", prog);
     return 2;
 }
@@ -70,6 +71,8 @@ int main(int argc, char **argv)
     bool classic = false, town = true;
     int music_volume = 100, sfx_volume = 100;
     int res_scale = -1, aa = ENH_DEFAULT_AA, motion_delay = ENH_DEFAULT_MOTION_DELAY;
+    bool retry = false;
+    int retry_slot_n = 16;
     char *game_argv[MAX_GAME_ARGS + 1] = { argv[0] };
     int game_argc = 1;
     for (int i = 1; i < argc; i++) {
@@ -85,6 +88,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--aa") && v) { aa = atoi(v); i++; }
         else if (!strcmp(a, "--motion-delay") && v) { motion_delay = atoi(v); i++; }
         else if (!strcmp(a, "--town") && v) { town = strcmp(v, "off") != 0; i++; }
+        else if (!strcmp(a, "--retry")) retry = true;                          /* RETRY: */
+        else if (!strcmp(a, "--retry-slot") && v) { retry_slot_n = atoi(v); i++; }
         else if (a[0] == '-' && a[1] == '-') return usage(argv[0]);
         else if (game_argc < MAX_GAME_ARGS) game_argv[game_argc++] = argv[i];
     }
@@ -105,6 +110,9 @@ int main(int argc, char **argv)
 
     if (res_scale < 0) res_scale = classic ? 1 : ENH_DEFAULT_RES_SCALE;
     enh_init(!classic, res_scale, aa, motion_delay, town);
+    /* RETRY: off in demo mode (the game plays itself) */
+    for (int k = 1; k < game_argc; k++) if (!SDL_strcasecmp(game_argv[k], "demo")) retry = false;
+    retry_set_options(retry, retry_slot_n);
     if (!host_init(dir, scale, fullscreen)) return 1;
     host_set_volumes(music_volume, sfx_volume);
     ega_init();                     /* 16-colour planar display: frame source, planes */
