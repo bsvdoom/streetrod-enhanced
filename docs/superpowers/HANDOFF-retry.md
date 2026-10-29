@@ -40,7 +40,7 @@ Windows target, cross-built here with mingw; enable / disable in the launcher; d
 | T3 retry core (options, silent save, checked load, classify) | done | 02b1cae |
 | **T4 offer dialog + engine call sites** | done; user-tested OK | 53b87ed, 8fc9a72 |
 | T4b Retry restarts the same race (opponent, bet, rnd state) | done; user-tested OK (King not hand-tested) | a19f701, ba6191b |
-| T5 Windows game build (mingw) | todo | |
+| T5 Windows game build (mingw) | done (Wine-tested) | 29fd1b3 |
 | T6 Launcher: Retry option, cross-built | todo | |
 | T7 Docs + Windows zip | todo | |
 
