@@ -10,6 +10,7 @@ bool enh_hd_enabled(void);
 /* Called by race_run when the cockpit descriptor is loaded */
 void enh_hd_set_cockpit(u16 seg, u16 off);
 void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy);
+void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */

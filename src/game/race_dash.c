@@ -232,6 +232,7 @@ void shifter_draw(s16 automatic, s16 ngears)
     u16 rec = (u16)(DS_shifter_tab + 10 * (automatic != 0 ? 0 : ngears == 3 ? 1 : 2));
     DSW(0x6C34) = rec;
     FarPtr gate = pic_get(DSS(rec + 2), 2);
+    enh_hd_set_gate(gate.seg, gate.off, 0x108, 0x17 + 100);
     Rect r = { 0x30, 0x2B, 0, 0, 0x108, 0x17 };                  /* VGA: +0 */
     drv_blit(gate, ds_far(DS_page0_ptr), &r, 1);
     FarPtr knob = pic_get(DSS(rec + 4), 2);

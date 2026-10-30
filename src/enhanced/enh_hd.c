@@ -266,6 +266,11 @@ void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy)
     }
 }
 
+void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy)
+{
+    enh_hd_set_clock(seg, off, dx, dy);
+}
+
 void enh_hd_compose(u32 *xrgb, int res_scale)
 {
     ensure_loaded();
@@ -307,12 +312,14 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
             /* Section 5.1 rule: if the shown EGA pixel differs from original picture,
              * something dynamic is there (needles, shifter, knob, crash sprite) -> keep it!
              * The side mirror area (8..39, 103..121) is replaced by the HD cutout above.
-             * Dials: tach at (145, 142), speedo at (196, 142) with radius 28 px are replaced by HD dials + vector needles. */
+             * Dials: tach at (145, 142), speedo at (196, 142) with radius 28 px are replaced by HD dials + vector needles.
+             * Steering wheel spokes: (80..263, 163..189) are kept clean HD; knob at top rim remains dynamic. */
             bool in_side_mirror = (x >= 8 && x < 40 && y >= 103 && y < 122);
             int dtx = x - 145, dty = y - 142;
             int dsx = x - 196, dsy = y - 142;
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
-            if (ega_c != orig_c && !in_side_mirror && !in_dial) continue;
+            bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
+            if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
