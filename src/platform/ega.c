@@ -4,6 +4,7 @@
 
 #include "host.h"
 #include "enhanced/enhanced.h"
+#include "enhanced/enh_hd.h"
 
 static u8 planes[4][EGA_PLANE_SIZE];
 static u16 start_addr;
@@ -49,6 +50,9 @@ static bool compose(u32 *xrgb)
         for (int j = 1; j < scale; j++) memcpy(first + (size_t)j * w, first, sizeof(u32) * (size_t)w);
     }
     enh_shown = enh_compose(xrgb, rgb);     /* ENH: the enhanced view over the picture */
+    if (!enh_shown && enh_hd_has_screen()) {
+        enh_hd_compose_screen(xrgb, scale);
+    }
     return true;
 }
 

@@ -72,6 +72,12 @@ bool race_debug_main(void)
         retry_debug_race_after();                  /* RETRY: SR_RETRY_FORCE */
         s16 r = (s16)race_results();
         retry_debug_race_done(r);                  /* RETRY: the offer, as bob_drive_in */
+    } else if (strcmp(mode, "garage") == 0) {
+        garage_screen(1);
+    } else if (strcmp(mode, "gas") == 0) {
+        gas_station();
+    } else if (strcmp(mode, "bob_direct") == 0) {
+        bob_drive_in();
     } else {
         DSW(DS_drive_dest) = 2;
         drive_to();

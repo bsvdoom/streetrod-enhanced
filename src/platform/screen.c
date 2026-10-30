@@ -8,6 +8,8 @@
 #include "platform/platform.h"
 #include "platform/vga.h"
 #include "platform/video.h"
+#include "enhanced/enhanced.h"
+#include <stdio.h>
 
 /* DGROUP globals without a symbols.h name. */
 #define DS_pic_x          0x04BE   /* i16: show_picture destination x (reset to 0 after each picture) */
@@ -239,6 +241,7 @@ void show_picture(s16 id, s16 clr)
 {
     HIDE();
     FarPtr b = pic_get(id, 2);
+    enh_hd_set_screen_pic(id, b.seg, b.off);
     if (clr >= 0) screen_fill_rect(0, 0, 0x140, DSS(DS_pic_rows), (u8)clr);
     Rect r;
     r.w = (s16)desc_w(b);

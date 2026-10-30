@@ -18,6 +18,11 @@ void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */
 void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale);
 
+/* Screen backgrounds: garage (0x408), bob (0x445), gas (0x442) */
+void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off);
+bool enh_hd_has_screen(void);
+void enh_hd_compose_screen(u32 *xrgb, int res_scale);
+
 /* Sky and horizon sampling (Section 5.2): fills row j of hd_sky_buf if HD sheets are present */
 void enh_hd_sky_begin(int w, int h, int sa);
 bool enh_hd_sky_row(int j, int sy, double shift, bool town);

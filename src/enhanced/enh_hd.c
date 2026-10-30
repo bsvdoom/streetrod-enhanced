@@ -38,6 +38,13 @@ static ImageHD img_cockpit;
 static ImageHD img_sheets_race;
 static ImageHD img_sheets_town;
 static ImageHD img_knob[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
+static ImageHD img_garage;
+static ImageHD img_bob;
+static ImageHD img_gas;
+
+static s16 hd_screen_id = 0;
+static u8  orig_screen[190][320];
+static bool has_orig_screen = false;
 
 static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
@@ -236,6 +243,99 @@ static void ensure_loaded(void)
     load_asset("knob_auto", &img_knob[0]);
     load_asset("knob_3speed", &img_knob[1]);
     load_asset("knob_4speed", &img_knob[2]);
+    load_asset("garage", &img_garage);
+    load_asset("bob", &img_bob);
+    load_asset("gas", &img_gas);
+}
+
+void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off)
+{
+    ensure_loaded();
+    if (id != 0x408 && id != 0x445 && id != 0x442) {
+        hd_screen_id = 0;
+        has_orig_screen = false;
+        return;
+    }
+    FarPtr d = { off, seg };
+    if (far_is_null(d)) return;
+    int w = desc_w(d), h = desc_h(d), stride = desc_stride(d);
+    if (w != 320 || h < 190) return;
+
+    FarPtr pl = desc_planes(d);
+    for (int y = 0; y < 190; y++) {
+        for (int x = 0; x < 320; x++) {
+            u16 o = (u16)(y * stride + (x >> 3));
+            int bit = 7 - (x & 7), c = 0;
+            for (int k = 0; k < 4; k++)
+                c |= (rd8(pl.seg, (u16)(pl.off + k * stride * h + o)) >> bit & 1) << k;
+            orig_screen[y][x] = (u8)c;
+        }
+    }
+    hd_screen_id = id;
+    has_orig_screen = true;
+}
+
+bool enh_hd_has_screen(void)
+{
+    if (!hd_opt_enabled || !has_orig_screen) return false;
+    if (hd_screen_id == 0x408) return img_garage.pixels != NULL;
+    if (hd_screen_id == 0x445) return img_bob.pixels != NULL;
+    if (hd_screen_id == 0x442) return img_gas.pixels != NULL;
+    return false;
+}
+
+void enh_hd_compose_screen(u32 *xrgb, int res_scale)
+{
+    if (!enh_hd_has_screen()) return;
+
+    const ImageHD *hd = NULL;
+    if (hd_screen_id == 0x408) hd = &img_garage;
+    else if (hd_screen_id == 0x445) hd = &img_bob;
+    else if (hd_screen_id == 0x442) hd = &img_gas;
+    if (!hd || !hd->pixels) return;
+
+    int W = 320 * res_scale;
+    int line_compare = ega_line_compare();
+    u16 start_addr = ega_start();
+    const u8 *p0 = ega_plane(0);
+    const u8 *p1 = ega_plane(1);
+    const u8 *p2 = ega_plane(2);
+    const u8 *p3 = ega_plane(3);
+
+    int hw = hd->w, hh = hd->h;
+
+    for (int y = 0; y < 190; y++) {
+        u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
+                                   : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
+        for (int x = 0; x < 320; x++) {
+            u16 o = (u16)(row + (x >> 3));
+            int bit = 7 - (x & 7);
+            int ega_c = ((p0[o] >> bit & 1)     ) |
+                        ((p1[o] >> bit & 1) << 1) |
+                        ((p2[o] >> bit & 1) << 2) |
+                        ((p3[o] >> bit & 1) << 3);
+
+            u8 orig_c = orig_screen[y][x];
+            if (ega_c != orig_c) continue;
+
+            for (int oy = 0; oy < res_scale; oy++) {
+                int Y = y * res_scale + oy;
+                int hy = (Y * hh) / (190 * res_scale);
+                if (hy >= hh) hy = hh - 1;
+                const u32 *hd_row = hd->pixels + (size_t)hy * hw;
+                u32 *out = xrgb + (size_t)Y * W;
+
+                for (int ox = 0; ox < res_scale; ox++) {
+                    int X = x * res_scale + ox;
+                    int hx = (X * hw) / W;
+                    if (hx >= hw) hx = hw - 1;
+
+                    u32 px = hd_row[hx];
+                    out[X] = px & 0xFFFFFF;
+                }
+            }
+        }
+    }
 }
 
 bool enh_hd_enabled(void)
