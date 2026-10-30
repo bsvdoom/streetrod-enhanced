@@ -178,6 +178,16 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
 
     int cw = img_cockpit.w, ch = img_cockpit.h;
 
+    /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
+    int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
+    int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
+    int mw  = 32 * res_scale,  mh  = 19 * res_scale;
+    for (int y = 0; y < mh; y++) {
+        memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+               xrgb + (size_t)(sy0 + y) * W + sx0,
+               (size_t)mw * sizeof(u32));
+    }
+
     for (int y = 0; y < 190; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
@@ -192,8 +202,10 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
             u8 orig_c = orig_cockpit[y][x];
 
             /* Section 5.1 rule: if the shown EGA pixel differs from original picture,
-             * something dynamic is there (needles, shifter, knob, crash sprite) -> keep it! */
-            if (ega_c != orig_c) continue;
+             * something dynamic is there (needles, shifter, knob, crash sprite) -> keep it!
+             * The side mirror area (8..39, 103..121) is replaced by the HD cutout above. */
+            bool in_side_mirror = (x >= 8 && x < 40 && y >= 103 && y < 122);
+            if (ega_c != orig_c && !in_side_mirror) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
