@@ -46,3 +46,8 @@ void enh_frame_presented(void);
  * over it. rgb = the 16 palette registers as XRGB. Returns true while the enhanced view is shown (the
  * picture changes with time even when the game draws nothing). */
 bool enh_compose(u32 *xrgb, const u32 rgb[16]);
+
+/* Developer aid: SR_ENH_DUMP=dir writes the picture at seg:off (DESC_* layout) to dir/name.idx: a line
+ * "IDX w h", then w*h palette indices, FFh = transparent. The first composed frame of a drive also writes
+ * the palette (palette.txt), the sky and horizon sheets and the cockpit pictures of the road view. */
+void enh_dev_dump_pic(const char *name, u16 seg, u16 off);

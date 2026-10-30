@@ -165,9 +165,57 @@ bool enh_view_at(Uint64 now_ns, EnhView *v)
     return true;
 }
 
+static void dump_image(const char *name, const EnhImage *img)
+{
+    const char *dir = SDL_getenv("SR_ENH_DUMP");
+    if (!dir || !*dir || !img) return;
+    char path[512];
+    SDL_snprintf(path, sizeof path, "%s/%s.idx", dir, name);
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    fprintf(f, "IDX %d %d\n", img->w, img->h);
+    fwrite(img->px, 1, (size_t)img->w * img->h, f);
+    fclose(f);
+}
+
+void enh_dev_dump_pic(const char *name, u16 seg, u16 off)
+{
+    if (!SDL_getenv("SR_ENH_DUMP")) return;
+    dump_image(name, enh_image_bitmap(seg, off));
+    enh_images_reset();                    /* the picture's memory is reused once it is popped */
+}
+
+static void dump_drive(const u32 rgb[16], bool town)
+{
+    static bool done[2];
+    static int shown[2];
+    const char *dir = SDL_getenv("SR_ENH_DUMP");
+    if (!dir || !*dir || done[town]) return;
+    bool lit = false;                      /* after the fade-in: the palette lit for 60 composed frames */
+    for (int i = 0; i < 16; i++) lit |= (rgb[i] & 0xFFFFFF) != 0;
+    shown[town] = lit ? shown[town] + 1 : 0;
+    if (shown[town] < 60) return;
+    done[town] = true;
+    char path[512];
+    SDL_snprintf(path, sizeof path, "%s/palette_%s.txt", dir, town ? "town" : "race");
+    FILE *f = fopen(path, "w");
+    if (f) {
+        for (int i = 0; i < 16; i++) fprintf(f, "%06X\n", (unsigned)(rgb[i] & 0xFFFFFF));
+        fclose(f);
+    }
+    dump_image(town ? "sheets_town" : "sheets_race", enh_image_vram(0x2000, 0, 0x66, 320, 0xB8 - 0x66));
+    FarPtr p = ds_far(DS_pic_pillar);
+    dump_image("pillar", enh_image_bitmap(p.seg, p.off));
+    p = ds_far(DS_pic_hood);
+    dump_image("hood", enh_image_bitmap(p.seg, p.off));
+    p = ds_far(DS_pic_mirror);
+    dump_image("mirror", enh_image_bitmap(p.seg, p.off));
+}
+
 bool enh_compose(u32 *xrgb, const u32 rgb[16])
 {
     if (!active || !presented || ega_start() != shown_start) return false;
+    dump_drive(rgb, snap.town);
     EnhView v;
     if (!enh_view_at(SDL_GetTicksNS(), &v)) return false;
     Uint64 t0 = SDL_GetTicksNS();
