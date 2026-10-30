@@ -37,16 +37,11 @@ static bool hd_opt_enabled = true;
 static ImageHD img_cockpit;
 static ImageHD img_sheets_race;
 static ImageHD img_sheets_town;
-static ImageHD img_knob[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
-static ImageHD img_garage;
-static ImageHD img_bob;
-static ImageHD img_gas;
+static ImageHD img_plate[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
+static ImageHD img_knob[3];  /* 0: auto, 1: 3-speed, 2: 4-speed */
 static ImageHD img_crash;
 
-static s16 hd_screen_id = 0;
-static u8  orig_screen[190][320];
-static bool has_orig_screen = false;
-
+static bool hd_cockpit_active = false;
 static bool hd_crashed = false;
 static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
@@ -77,6 +72,18 @@ bool enh_hd_is_crashed(void)
 /* Clean original cockpit palette indices (320x190) from the game's descriptors */
 static u8 orig_cockpit[190][320];
 static bool has_orig_cockpit = false;
+
+void enh_hd_clear_cockpit(void)
+{
+    hd_cockpit_active = false;
+    has_orig_cockpit = false;
+    hd_crashed = false;
+}
+
+bool enh_hd_has_cockpit(void)
+{
+    return hd_opt_enabled && hd_cockpit_active && img_cockpit.pixels != NULL && has_orig_cockpit;
+}
 
 typedef struct {
     float x0, y0; /* Tip in 320x190 coords */
@@ -252,103 +259,29 @@ static void ensure_loaded(void)
     load_asset("cockpit", &img_cockpit);
     load_asset("sheets_race", &img_sheets_race);
     load_asset("sheets_town", &img_sheets_town);
+    load_asset("plate_auto", &img_plate[0]);
+    load_asset("plate_3speed", &img_plate[1]);
+    load_asset("plate_4speed", &img_plate[2]);
     load_asset("knob_auto", &img_knob[0]);
     load_asset("knob_3speed", &img_knob[1]);
     load_asset("knob_4speed", &img_knob[2]);
-    load_asset("garage", &img_garage);
-    load_asset("bob", &img_bob);
-    load_asset("gas", &img_gas);
     load_asset("crash", &img_crash);
 }
 
 void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off)
 {
-    ensure_loaded();
-    if (id != 0x408 && id != 0x445 && id != 0x442) {
-        hd_screen_id = 0;
-        has_orig_screen = false;
-        return;
-    }
-    FarPtr d = { off, seg };
-    if (far_is_null(d)) return;
-    int w = desc_w(d), h = desc_h(d), stride = desc_stride(d);
-    if (w != 320 || h < 190) return;
-
-    FarPtr pl = desc_planes(d);
-    for (int y = 0; y < 190; y++) {
-        for (int x = 0; x < 320; x++) {
-            u16 o = (u16)(y * stride + (x >> 3));
-            int bit = 7 - (x & 7), c = 0;
-            for (int k = 0; k < 4; k++)
-                c |= (rd8(pl.seg, (u16)(pl.off + k * stride * h + o)) >> bit & 1) << k;
-            orig_screen[y][x] = (u8)c;
-        }
-    }
-    hd_screen_id = id;
-    has_orig_screen = true;
+    enh_hd_clear_cockpit();
+    (void)id; (void)seg; (void)off;
 }
 
 bool enh_hd_has_screen(void)
 {
-    if (!hd_opt_enabled || !has_orig_screen) return false;
-    if (hd_screen_id == 0x408) return img_garage.pixels != NULL;
-    if (hd_screen_id == 0x445) return img_bob.pixels != NULL;
-    if (hd_screen_id == 0x442) return img_gas.pixels != NULL;
     return false;
 }
 
 void enh_hd_compose_screen(u32 *xrgb, int res_scale)
 {
-    if (!enh_hd_has_screen()) return;
-
-    const ImageHD *hd = NULL;
-    if (hd_screen_id == 0x408) hd = &img_garage;
-    else if (hd_screen_id == 0x445) hd = &img_bob;
-    else if (hd_screen_id == 0x442) hd = &img_gas;
-    if (!hd || !hd->pixels) return;
-
-    int W = 320 * res_scale;
-    int line_compare = ega_line_compare();
-    u16 start_addr = ega_start();
-    const u8 *p0 = ega_plane(0);
-    const u8 *p1 = ega_plane(1);
-    const u8 *p2 = ega_plane(2);
-    const u8 *p3 = ega_plane(3);
-
-    int hw = hd->w, hh = hd->h;
-
-    for (int y = 0; y < 190; y++) {
-        u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
-                                   : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
-        for (int x = 0; x < 320; x++) {
-            u16 o = (u16)(row + (x >> 3));
-            int bit = 7 - (x & 7);
-            int ega_c = ((p0[o] >> bit & 1)     ) |
-                        ((p1[o] >> bit & 1) << 1) |
-                        ((p2[o] >> bit & 1) << 2) |
-                        ((p3[o] >> bit & 1) << 3);
-
-            u8 orig_c = orig_screen[y][x];
-            if (ega_c != orig_c) continue;
-
-            for (int oy = 0; oy < res_scale; oy++) {
-                int Y = y * res_scale + oy;
-                int hy = (Y * hh) / (190 * res_scale);
-                if (hy >= hh) hy = hh - 1;
-                const u32 *hd_row = hd->pixels + (size_t)hy * hw;
-                u32 *out = xrgb + (size_t)Y * W;
-
-                for (int ox = 0; ox < res_scale; ox++) {
-                    int X = x * res_scale + ox;
-                    int hx = (X * hw) / W;
-                    if (hx >= hw) hx = hw - 1;
-
-                    u32 px = hd_row[hx];
-                    out[X] = px & 0xFFFFFF;
-                }
-            }
-        }
-    }
+    (void)xrgb; (void)res_scale;
 }
 
 bool enh_hd_enabled(void)
@@ -360,6 +293,7 @@ bool enh_hd_enabled(void)
 void enh_hd_set_cockpit(u16 seg, u16 off)
 {
     ensure_loaded();
+    hd_cockpit_active = true;
     hd_crashed = false;
     FarPtr d = { off, seg };
     if (far_is_null(d)) return;
@@ -543,12 +477,47 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
         }
     }
 
-    /* Render anti-aliased vector shift knob over the HD plate */
+    /* Render HD shifter plate matching transmission type (0: auto, 1: 3-speed, 2: 4-speed) */
+    if (!hd_crashed && img_plate[hd_knob_type].pixels) {
+        const ImageHD *pimg = &img_plate[hd_knob_type];
+        int pw = pimg->w, ph = pimg->h;
+        int px0 = 264 * res_scale;
+        int py0 = 123 * res_scale;
+
+        for (int py = 0; py < ph; py++) {
+            int Y = py0 + py;
+            if (Y < 0 || Y >= 200 * res_scale) continue;
+            u32 *out_row = xrgb + (size_t)Y * W;
+            const u32 *p_row = pimg->pixels + (size_t)py * pw;
+
+            for (int px = 0; px < pw; px++) {
+                int X = px0 + px;
+                if (X < 0 || X >= W) continue;
+                u32 pp = p_row[px];
+                u32 a = (pp >> 24) & 0xFF;
+                if (a == 0) continue;
+
+                if (a == 255) {
+                    out_row[X] = pp & 0xFFFFFF;
+                } else {
+                    u32 bg = out_row[X];
+                    u32 br = (bg >> 16) & 0xFF, bg_g = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+                    u32 pr = (pp >> 16) & 0xFF, pg = (pp >> 8) & 0xFF, pb = pp & 0xFF;
+                    u32 nr = (pr * a + br * (255 - a)) / 255;
+                    u32 ng = (pg * a + bg_g * (255 - a)) / 255;
+                    u32 nb = (pb * a + bb * (255 - a)) / 255;
+                    out_row[X] = (nr << 16) | (ng << 8) | nb;
+                }
+            }
+        }
+    }
+
+    /* Render anti-aliased vector shift knob/handle over the HD plate */
     if (!hd_crashed && hd_knob_active && img_knob[hd_knob_type].pixels) {
         const ImageHD *kimg = &img_knob[hd_knob_type];
         int kw = kimg->w, kh = kimg->h;
         int kcx = (264 + hd_knob_x + 12) * res_scale;
-        int kcy = (123 + hd_knob_y + 10) * res_scale;
+        int kcy = (123 + hd_knob_y + (hd_knob_type == 0 ? 4 : 10)) * res_scale;
         int kx0 = kcx - kw / 2;
         int ky0 = kcy - kh / 2;
 
@@ -584,12 +553,28 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     if (hd_crashed && img_crash.pixels != NULL) {
         int cw2 = img_crash.w, ch2 = img_crash.h;
         for (int Y = 0; Y < 190 * res_scale; Y++) {
+            int y = Y / res_scale;
             int cy = (Y * ch2) / (190 * res_scale);
             if (cy >= ch2) cy = ch2 - 1;
             const u32 *c_row = img_crash.pixels + (size_t)cy * cw2;
             u32 *out_row = xrgb + (size_t)Y * W;
 
             for (int X = 0; X < W; X++) {
+                int x = X / res_scale;
+                /* Avoid drawing cracks over in-game dialog boxes */
+                if (x >= 36 && x <= 284 && y >= 10 && y <= 48) {
+                    u8 orig_c = orig_cockpit[y][x];
+                    u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
+                                               : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
+                    u16 o = (u16)(row + (x >> 3));
+                    int bit = 7 - (x & 7);
+                    int ega_c = ((p0[o] >> bit & 1)     ) |
+                                ((p1[o] >> bit & 1) << 1) |
+                                ((p2[o] >> bit & 1) << 2) |
+                                ((p3[o] >> bit & 1) << 3);
+                    if (ega_c != orig_c) continue;
+                }
+
                 int cx = (X * cw2) / W;
                 if (cx >= cw2) cx = cw2 - 1;
                 u32 cp = c_row[cx];

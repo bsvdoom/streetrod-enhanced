@@ -17,6 +17,7 @@
 #include "platform/video.h"
 #include "sound/sound.h"
 #include "enhanced/enh_hd.h"
+#include "enhanced/enhanced.h"
 
 static long double dconst(u16 off)
 {

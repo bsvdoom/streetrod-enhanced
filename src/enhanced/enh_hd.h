@@ -8,7 +8,10 @@ void enh_hd_init(bool enabled);
 bool enh_hd_enabled(void);
 
 /* Called by race_run when the cockpit descriptor is loaded */
+/* Cockpit active state */
 void enh_hd_set_cockpit(u16 seg, u16 off);
+void enh_hd_clear_cockpit(void);
+bool enh_hd_has_cockpit(void);
 void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_knob_type(int type);

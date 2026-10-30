@@ -20,6 +20,8 @@
 #include "game/flow.h"
 #include "platform/platform.h"
 #include "platform/video.h"
+#include "enhanced/enhanced.h"
+#include <stdio.h>
 
 static long double dconst(u16 off)
 {
