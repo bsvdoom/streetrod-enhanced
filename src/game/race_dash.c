@@ -12,6 +12,7 @@
  * >= 100 keep clean copies of the needle areas (x 108h, rows 100 + 5 / 0Ch / 23h); the shifter keeps
  * its gate / knob cut-outs in page 2 (DS:82B4). The CGA / Hercules / Tandy branches are parked. */
 #include "game/race_int.h"
+#include "enhanced/enh_hd.h"
 
 #include <math.h>
 #include <string.h>
@@ -79,6 +80,7 @@ static void needle_init(s16 v, s16 cx, s16 kind, s16 colour)
     s16 l = x0 > x1 ? x1 : x0, t = y0 > y1 ? y1 : y0;
     dash_save_rect(l, t, (s16)(abs16((s16)(x0 - x1)) + 1), (s16)(abs16((s16)(y0 - y1)) + 1), kind);
     dash_line(x0, y0, x1, y1, colour);
+    enh_hd_set_needle(kind == 3 ? 1 : 0, x0, (s16)(y0 + 100), x1, (s16)(y1 + 100));
 }
 
 /* 0f38:01d2 speedo_init */
@@ -111,6 +113,7 @@ s16 needle_update(s16 nv, s16 old, s16 tach)
     dash_save_rect(x0 > x1 ? x1 : x0, y0 > y1 ? y1 : y0,
                    (s16)(abs16((s16)(x0 - x1)) + 1), (s16)(abs16((s16)(y0 - y1)) + 1), kind);
     drv_line(x0, y0, x1, y1, DSS(DS_needle_colour));
+    enh_hd_set_needle(tach ? 1 : 0, x0, (s16)(y0 + 100), x1, (s16)(y1 + 100));
     DSW(DS_g_draw_seg) = s7a;
     DSW(0x767C) = s7c;
     return nv;

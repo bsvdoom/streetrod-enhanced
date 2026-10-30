@@ -42,6 +42,109 @@ static ImageHD img_sheets_town;
 static u8 orig_cockpit[190][320];
 static bool has_orig_cockpit = false;
 
+typedef struct {
+    float x0, y0; /* Tip in 320x190 coords */
+    float x1, y1; /* Tail/hub in 320x190 coords */
+    bool active;
+} NeedleHD;
+
+static NeedleHD hd_needles[2]; /* 0: speedo, 1: tach */
+
+void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1)
+{
+    if (kind < 0 || kind > 1) return;
+    hd_needles[kind].x0 = (float)x0;
+    hd_needles[kind].y0 = (float)y0;
+    hd_needles[kind].x1 = (float)x1;
+    hd_needles[kind].y1 = (float)y1;
+    hd_needles[kind].active = true;
+}
+
+/* Anti-aliased capsule line drawing at host resolution */
+static void draw_capsule_line(u32 *xrgb, int W, int H,
+                              float x0, float y0, float r0,
+                              float x1, float y1, float r1,
+                              u32 color)
+{
+    float dx = x1 - x0;
+    float dy = y1 - y0;
+    float len_sq = dx * dx + dy * dy;
+    if (len_sq < 1e-4f) return;
+
+    float max_r = fmaxf(r0, r1);
+    int min_x = SDL_max(0, (int)floorf(fminf(x0, x1) - max_r - 1.0f));
+    int max_x = SDL_min(W - 1, (int)ceilf(fmaxf(x0, x1) + max_r + 1.0f));
+    int min_y = SDL_max(0, (int)floorf(fminf(y0, y1) - max_r - 1.0f));
+    int max_y = SDL_min(H - 1, (int)ceilf(fmaxf(y0, y1) + max_r + 1.0f));
+
+    u32 cr = (color >> 16) & 0xFF;
+    u32 cg = (color >> 8)  & 0xFF;
+    u32 cb = color & 0xFF;
+
+    for (int y = min_y; y <= max_y; y++) {
+        float py = (float)y + 0.5f;
+        u32 *row = xrgb + (size_t)y * W;
+        for (int x = min_x; x <= max_x; x++) {
+            float px = (float)x + 0.5f;
+            float vx = px - x0;
+            float vy = py - y0;
+            float t = (vx * dx + vy * dy) / len_sq;
+            t = SDL_clamp(t, 0.0f, 1.0f);
+
+            float cx = x0 + t * dx;
+            float cy = y0 + t * dy;
+            float dist = sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+            float r_at_t = r0 + t * (r1 - r0);
+
+            float alpha = SDL_clamp(r_at_t + 0.5f - dist, 0.0f, 1.0f);
+            if (alpha <= 0.0f) continue;
+
+            u32 bg = row[x];
+            u32 br = (bg >> 16) & 0xFF;
+            u32 bg_g = (bg >> 8) & 0xFF;
+            u32 bb = bg & 0xFF;
+
+            u32 out_r = (u32)(cr * alpha + br * (1.0f - alpha) + 0.5f);
+            u32 out_g = (u32)(cg * alpha + bg_g * (1.0f - alpha) + 0.5f);
+            u32 out_b = (u32)(cb * alpha + bb * (1.0f - alpha) + 0.5f);
+            row[x] = (out_r << 16) | (out_g << 8) | out_b;
+        }
+    }
+}
+
+static void draw_aa_circle(u32 *xrgb, int W, int H, float cx, float cy, float radius, u32 color)
+{
+    int min_x = SDL_max(0, (int)floorf(cx - radius - 1.0f));
+    int max_x = SDL_min(W - 1, (int)ceilf(cx + radius + 1.0f));
+    int min_y = SDL_max(0, (int)floorf(cy - radius - 1.0f));
+    int max_y = SDL_min(H - 1, (int)ceilf(cy + radius + 1.0f));
+
+    u32 cr = (color >> 16) & 0xFF;
+    u32 cg = (color >> 8)  & 0xFF;
+    u32 cb = color & 0xFF;
+
+    for (int y = min_y; y <= max_y; y++) {
+        float py = (float)y + 0.5f;
+        u32 *row = xrgb + (size_t)y * W;
+        for (int x = min_x; x <= max_x; x++) {
+            float px = (float)x + 0.5f;
+            float dist = sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+            float alpha = SDL_clamp(radius + 0.5f - dist, 0.0f, 1.0f);
+            if (alpha <= 0.0f) continue;
+
+            u32 bg = row[x];
+            u32 br = (bg >> 16) & 0xFF;
+            u32 bg_g = (bg >> 8) & 0xFF;
+            u32 bb = bg & 0xFF;
+
+            u32 out_r = (u32)(cr * alpha + br * (1.0f - alpha) + 0.5f);
+            u32 out_g = (u32)(cg * alpha + bg_g * (1.0f - alpha) + 0.5f);
+            u32 out_b = (u32)(cb * alpha + bb * (1.0f - alpha) + 0.5f);
+            row[x] = (out_r << 16) | (out_g << 8) | out_b;
+        }
+    }
+}
+
 /* HD sky sampling buffer, sized to enh_buf (w * h) */
 static u32 *hd_sky_buf = NULL;
 static int hd_sky_w = 0, hd_sky_h = 0, hd_sky_sa = 0;
@@ -203,9 +306,13 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
 
             /* Section 5.1 rule: if the shown EGA pixel differs from original picture,
              * something dynamic is there (needles, shifter, knob, crash sprite) -> keep it!
-             * The side mirror area (8..39, 103..121) is replaced by the HD cutout above. */
+             * The side mirror area (8..39, 103..121) is replaced by the HD cutout above.
+             * Dials: tach at (145, 142), speedo at (196, 142) with radius 28 px are replaced by HD dials + vector needles. */
             bool in_side_mirror = (x >= 8 && x < 40 && y >= 103 && y < 122);
-            if (ega_c != orig_c && !in_side_mirror) continue;
+            int dtx = x - 145, dty = y - 142;
+            int dsx = x - 196, dsy = y - 142;
+            bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
+            if (ega_c != orig_c && !in_side_mirror && !in_dial) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
@@ -227,6 +334,29 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
                 }
             }
         }
+    }
+
+    /* Render smooth anti-aliased vector needles over the clean HD dials */
+    float sc = (float)res_scale;
+    float r_tip  = 1.1f * (sc / 4.0f);
+    float r_tail = 2.4f * (sc / 4.0f);
+    float r_hub  = 4.2f * (sc / 4.0f);
+    float r_pin  = 1.8f * (sc / 4.0f);
+
+    for (int k = 0; k < 2; k++) {
+        if (!hd_needles[k].active) continue;
+        float x0 = hd_needles[k].x0 * sc;
+        float y0 = hd_needles[k].y0 * sc;
+        float x1 = hd_needles[k].x1 * sc;
+        float y1 = hd_needles[k].y1 * sc;
+
+        /* Needle body (tapered capsule) in bright needle red */
+        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip, x1, y1, r_tail, 0xFF2A1A);
+        /* Subtle orange core highlight */
+        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip * 0.4f, x1, y1, r_tail * 0.4f, 0xFFAA44);
+        /* Center hub chrome cap and dark pin */
+        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
+        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
     }
 }
 
