@@ -78,6 +78,17 @@ bool race_debug_main(void)
         gas_station();
     } else if (strcmp(mode, "bob_direct") == 0) {
         bob_drive_in();
+    } else if (strcmp(mode, "crash") == 0) {
+        DSW(DS_race_type) = 0;
+        opponent_load(0);
+        DSW(DS_bet_kind) = 0;
+        DSW(DS_bet_amount) = 0;
+        DSW(DS_bet_button) = 1;
+        retry_debug_race_before();
+        race_start();
+        PHS(PLAYER, PH_SPEED) = 0x65; /* > 90 mph for glass cracks */
+        void crash_show(void);
+        crash_show();
     } else {
         DSW(DS_drive_dest) = 2;
         drive_to();

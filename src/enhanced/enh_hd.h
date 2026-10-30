@@ -14,6 +14,8 @@ void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_knob_type(int type);
 void enh_hd_set_knob_pos(int x, int y);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
+void enh_hd_set_crashed(bool crashed);
+bool enh_hd_is_crashed(void);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */
 void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale);

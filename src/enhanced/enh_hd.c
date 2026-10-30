@@ -41,11 +41,13 @@ static ImageHD img_knob[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
 static ImageHD img_garage;
 static ImageHD img_bob;
 static ImageHD img_gas;
+static ImageHD img_crash;
 
 static s16 hd_screen_id = 0;
 static u8  orig_screen[190][320];
 static bool has_orig_screen = false;
 
+static bool hd_crashed = false;
 static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
 static bool hd_knob_active = false;
@@ -60,6 +62,16 @@ void enh_hd_set_knob_pos(int x, int y)
     hd_knob_x = x;
     hd_knob_y = y;
     hd_knob_active = true;
+}
+
+void enh_hd_set_crashed(bool crashed)
+{
+    hd_crashed = crashed;
+}
+
+bool enh_hd_is_crashed(void)
+{
+    return hd_crashed;
 }
 
 /* Clean original cockpit palette indices (320x190) from the game's descriptors */
@@ -246,6 +258,7 @@ static void ensure_loaded(void)
     load_asset("garage", &img_garage);
     load_asset("bob", &img_bob);
     load_asset("gas", &img_gas);
+    load_asset("crash", &img_crash);
 }
 
 void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off)
@@ -347,6 +360,7 @@ bool enh_hd_enabled(void)
 void enh_hd_set_cockpit(u16 seg, u16 off)
 {
     ensure_loaded();
+    hd_crashed = false;
     FarPtr d = { off, seg };
     if (far_is_null(d)) return;
     int w = desc_w(d), h = desc_h(d), stride = desc_stride(d);
@@ -448,8 +462,8 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             int dtx = x - 145, dty = y - 142;
             int dsx = x - 196, dsy = y - 142;
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
-            bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
-            bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
+            bool in_wheel_spokes = !hd_crashed && (x >= 80 && x < 264 && y >= 163 && y < 190);
+            bool in_shifter = !hd_crashed && (x >= 264 && x < 312 && y >= 123 && y < 166);
             if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
@@ -505,30 +519,32 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     }
 
     /* Render smooth anti-aliased vector needles over the clean HD dials */
-    float sc = (float)res_scale;
-    float r_tip  = 1.1f * (sc / 4.0f);
-    float r_tail = 2.4f * (sc / 4.0f);
-    float r_hub  = 4.2f * (sc / 4.0f);
-    float r_pin  = 1.8f * (sc / 4.0f);
+    if (!hd_crashed) {
+        float sc = (float)res_scale;
+        float r_tip  = 1.1f * (sc / 4.0f);
+        float r_tail = 2.4f * (sc / 4.0f);
+        float r_hub  = 4.2f * (sc / 4.0f);
+        float r_pin  = 1.8f * (sc / 4.0f);
 
-    for (int k = 0; k < 2; k++) {
-        if (!hd_needles[k].active) continue;
-        float x0 = hd_needles[k].x0 * sc;
-        float y0 = hd_needles[k].y0 * sc;
-        float x1 = hd_needles[k].x1 * sc;
-        float y1 = hd_needles[k].y1 * sc;
+        for (int k = 0; k < 2; k++) {
+            if (!hd_needles[k].active) continue;
+            float x0 = hd_needles[k].x0 * sc;
+            float y0 = hd_needles[k].y0 * sc;
+            float x1 = hd_needles[k].x1 * sc;
+            float y1 = hd_needles[k].y1 * sc;
 
-        /* Needle body (tapered capsule) in bright needle red */
-        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip, x1, y1, r_tail, 0xFF2A1A);
-        /* Subtle orange core highlight */
-        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip * 0.4f, x1, y1, r_tail * 0.4f, 0xFFAA44);
-        /* Center hub chrome cap and dark pin */
-        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
-        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
+            /* Needle body (tapered capsule) in bright needle red */
+            draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip, x1, y1, r_tail, 0xFF2A1A);
+            /* Subtle orange core highlight */
+            draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip * 0.4f, x1, y1, r_tail * 0.4f, 0xFFAA44);
+            /* Center hub chrome cap and dark pin */
+            draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
+            draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
+        }
     }
 
     /* Render anti-aliased vector shift knob over the HD plate */
-    if (hd_knob_active && img_knob[hd_knob_type].pixels) {
+    if (!hd_crashed && hd_knob_active && img_knob[hd_knob_type].pixels) {
         const ImageHD *kimg = &img_knob[hd_knob_type];
         int kw = kimg->w, kh = kimg->h;
         int kcx = (264 + hd_knob_x + 12) * res_scale;
@@ -560,6 +576,33 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                     u32 nb = (kb * a + bb * (255 - a)) / 255;
                     out_row[X] = (nr << 16) | (ng << 8) | nb;
                 }
+            }
+        }
+    }
+
+    /* Render HD cracked windshield overlay on crash */
+    if (hd_crashed && img_crash.pixels != NULL) {
+        int cw2 = img_crash.w, ch2 = img_crash.h;
+        for (int Y = 0; Y < 190 * res_scale; Y++) {
+            int cy = (Y * ch2) / (190 * res_scale);
+            if (cy >= ch2) cy = ch2 - 1;
+            const u32 *c_row = img_crash.pixels + (size_t)cy * cw2;
+            u32 *out_row = xrgb + (size_t)Y * W;
+
+            for (int X = 0; X < W; X++) {
+                int cx = (X * cw2) / W;
+                if (cx >= cw2) cx = cw2 - 1;
+                u32 cp = c_row[cx];
+                u32 a = (cp >> 24) & 0xFF;
+                if (a == 0) continue;
+
+                u32 bg = out_row[X];
+                u32 br = (bg >> 16) & 0xFF, bg_g = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+                u32 cr = (cp >> 16) & 0xFF, cg = (cp >> 8) & 0xFF, cb = cp & 0xFF;
+                u32 nr = (cr * a + br * (255 - a)) / 255;
+                u32 ng = (cg * a + bg_g * (255 - a)) / 255;
+                u32 nb = (cb * a + bb * (255 - a)) / 255;
+                out_row[X] = (nr << 16) | (ng << 8) | nb;
             }
         }
     }

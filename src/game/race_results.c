@@ -16,6 +16,7 @@
 #include "platform/platform.h"
 #include "platform/video.h"
 #include "sound/sound.h"
+#include "enhanced/enh_hd.h"
 
 static long double dconst(u16 off)
 {
@@ -132,8 +133,9 @@ static void ticket_show(void)
 }
 
 /* 0000:c1d8 crash_show: cockpit crash picture, the wheel knob, glass cracks above 90 mph */
-static void crash_show(void)
+void crash_show(void)
 {
+    enh_hd_set_crashed(true);
     s16 ega = DSS(DS_driver_id) == -2 && DSW(DS_g_vga) == 0;
     fx_crash();
     arena_reset();
