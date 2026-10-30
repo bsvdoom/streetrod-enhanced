@@ -431,8 +431,43 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     int c7_g = (int)((c7_raw >> 8) & 0xFF);
     int c7_b = (int)(c7_raw & 0xFF);
 
-    /* Check if top rear-view mirror cutout is covered (e.g. crash dialog box or msg_box) */
-    bool top_mirror_covered = hd_crashed;
+    /* Check if Dialog 1 (top green crash results or message box) is active */
+    bool top_dialog_active = false;
+    s16 top_d_depth = DSS(0x8B8E);
+    if (top_d_depth > 0 && top_d_depth <= 4) {
+        for (int d = 0; d < top_d_depth; d++) {
+            s16 scr = DSS((u16)(0x8B86 + 2 * d));
+            if (scr == 0x18 || scr == 0x19 || scr == 0x1A) {
+                top_dialog_active = true;
+                break;
+            }
+        }
+    }
+    if (!top_dialog_active) {
+        /* Fallback check: sample interior of Dialog 1 at (100, 20) and (120, 30) */
+        u16 r_t = 20 < line_compare ? (u16)(start_addr + 20 * EGA_BYTES_PER_LINE)
+                                    : (u16)((20 - line_compare) * EGA_BYTES_PER_LINE);
+        u16 o_t = (u16)(r_t + (100 >> 3));
+        int b_t = 7 - (100 & 7);
+        int c_t = ((p0[o_t] >> b_t & 1)     ) |
+                  ((p1[o_t] >> b_t & 1) << 1) |
+                  ((p2[o_t] >> b_t & 1) << 2) |
+                  ((p3[o_t] >> b_t & 1) << 3);
+        if (c_t == 2) {
+            u16 r_t2 = 30 < line_compare ? (u16)(start_addr + 30 * EGA_BYTES_PER_LINE)
+                                         : (u16)((30 - line_compare) * EGA_BYTES_PER_LINE);
+            u16 o_t2 = (u16)(r_t2 + (120 >> 3));
+            int b_t2 = 7 - (120 & 7);
+            int c_t2 = ((p0[o_t2] >> b_t2 & 1)     ) |
+                       ((p1[o_t2] >> b_t2 & 1) << 1) |
+                       ((p2[o_t2] >> b_t2 & 1) << 2) |
+                       ((p3[o_t2] >> b_t2 & 1) << 3);
+            if (c_t2 == 2) top_dialog_active = true;
+        }
+    }
+
+    /* Check if top rear-view mirror cutout is covered */
+    bool top_mirror_covered = top_dialog_active;
     if (!top_mirror_covered) {
         for (int my = 22; my < 41 && !top_mirror_covered; my += 4) {
             u16 mrow = my < line_compare ? (u16)(start_addr + my * EGA_BYTES_PER_LINE)
@@ -502,7 +537,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
-            bool in_d1 = top_mirror_covered && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
+            bool in_d1 = top_dialog_active && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
             bool in_d2 = (x >= 58 && x <= 258 && y >= 70 && y <= 120)
                          && (retry_is_dialog_active() || (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8));
             if (in_d1 || in_d2) continue;
@@ -683,7 +718,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 
         /* Safety bounds for crash dialog (menu 0x19/0x1A: x ~ 37..288, y ~ 7..53)
          * and retry dialog (x ~ 58..258, y ~ 70..120) */
-        if (num_boxes < 8 && top_mirror_covered) {
+        if (num_boxes < 8 && top_dialog_active) {
             ui_boxes[num_boxes++] = (UIRect){ 37, 7, 288, 53 };
         }
         /* Check if retry dialog is active (center white popup at x ~ 58..258, y ~ 70..120) */
@@ -713,7 +748,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                 int x = X / res_scale;
 
                 /* Never draw cracks over Dialog 1 (crash results) or Dialog 2 (retry offer) */
-                bool in_d1 = top_mirror_covered && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
+                bool in_d1 = top_dialog_active && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
                 bool in_d2 = (retry_is_dialog_active() || (x >= 58 && x <= 258 && y >= 70 && y <= 120))
                              && (x >= 58 && x <= 258 && y >= 70 && y <= 120);
                 if (in_d1 || in_d2) continue;
