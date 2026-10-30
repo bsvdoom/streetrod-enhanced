@@ -11,6 +11,8 @@ bool enh_hd_enabled(void);
 void enh_hd_set_cockpit(u16 seg, u16 off);
 void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
+void enh_hd_set_knob_type(int type);
+void enh_hd_set_knob_pos(int x, int y);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */

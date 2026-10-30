@@ -229,6 +229,7 @@ void wheel_draw(s16 nw, s16 old, FarPtr dst)
 /* 0f38:12f7 shifter_draw(automatic, ngears) */
 void shifter_draw(s16 automatic, s16 ngears)
 {
+    enh_hd_set_knob_type(automatic != 0 ? 0 : (ngears == 3 ? 1 : 2));
     u16 rec = (u16)(DS_shifter_tab + 10 * (automatic != 0 ? 0 : ngears == 3 ? 1 : 2));
     DSW(0x6C34) = rec;
     FarPtr gate = pic_get(DSS(rec + 2), 2);
@@ -286,6 +287,13 @@ void shifter_knob(FarPtr dst, u16 phys)
     shifter_blit(dst, pos, 1);
     DSS(0x6C36) = pos;
     PHW(phys, PH_GEAR_DIRTY) = 0;
+
+    /* ENH: synchronize vector knob position */
+    u16 rec = DSW(0x6C34);
+    u16 p = (u16)(DSW(rec + 8) + 2 * pos);
+    s16 kx = DSC(p);
+    s16 ky = DSC((u16)(p + 1));
+    enh_hd_set_knob_pos(kx, ky);
 }
 
 /* 0f38:22e9 gear_label: "0 1 2 3 4 N D" (DS:0482 pointers) after "Gear:" on the status line */

@@ -37,6 +37,23 @@ static bool hd_opt_enabled = true;
 static ImageHD img_cockpit;
 static ImageHD img_sheets_race;
 static ImageHD img_sheets_town;
+static ImageHD img_knob[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
+
+static int  hd_knob_type = 2;
+static int  hd_knob_x = 0, hd_knob_y = 0;
+static bool hd_knob_active = false;
+
+void enh_hd_set_knob_type(int type)
+{
+    hd_knob_type = (type >= 0 && type <= 2) ? type : 2;
+}
+
+void enh_hd_set_knob_pos(int x, int y)
+{
+    hd_knob_x = x;
+    hd_knob_y = y;
+    hd_knob_active = true;
+}
 
 /* Clean original cockpit palette indices (320x190) from the game's descriptors */
 static u8 orig_cockpit[190][320];
@@ -216,6 +233,9 @@ static void ensure_loaded(void)
     load_asset("cockpit", &img_cockpit);
     load_asset("sheets_race", &img_sheets_race);
     load_asset("sheets_town", &img_sheets_town);
+    load_asset("knob_auto", &img_knob[0]);
+    load_asset("knob_3speed", &img_knob[1]);
+    load_asset("knob_4speed", &img_knob[2]);
 }
 
 bool enh_hd_enabled(void)
@@ -329,7 +349,8 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             int dsx = x - 196, dsy = y - 142;
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
-            if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes) continue;
+            bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
+            if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
@@ -348,7 +369,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                     if (a == 0) continue; /* Transparent: windshield/mirror road view */
 
                     /* Dynamic hood/fender recoloring matching player car paint */
-                    if (y >= 90 && y < 114 && X >= 58 * res_scale) {
+                    if (y >= 90 && y < 114 && X >= 69 * res_scale) {
                         int pr = (int)((px >> 16) & 0xFF);
                         int pg = (int)((px >> 8) & 0xFF);
                         int pb = (int)(px & 0xFF);
@@ -404,6 +425,43 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
         /* Center hub chrome cap and dark pin */
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
+    }
+
+    /* Render anti-aliased vector shift knob over the HD plate */
+    if (hd_knob_active && img_knob[hd_knob_type].pixels) {
+        const ImageHD *kimg = &img_knob[hd_knob_type];
+        int kw = kimg->w, kh = kimg->h;
+        int kcx = (264 + hd_knob_x + 12) * res_scale;
+        int kcy = (123 + hd_knob_y + 10) * res_scale;
+        int kx0 = kcx - kw / 2;
+        int ky0 = kcy - kh / 2;
+
+        for (int ky = 0; ky < kh; ky++) {
+            int Y = ky0 + ky;
+            if (Y < 0 || Y >= 200 * res_scale) continue;
+            u32 *out_row = xrgb + (size_t)Y * W;
+            const u32 *k_row = kimg->pixels + (size_t)ky * kw;
+
+            for (int kx = 0; kx < kw; kx++) {
+                int X = kx0 + kx;
+                if (X < 0 || X >= W) continue;
+                u32 kp = k_row[kx];
+                u32 a = (kp >> 24) & 0xFF;
+                if (a == 0) continue;
+
+                if (a == 255) {
+                    out_row[X] = kp & 0xFFFFFF;
+                } else {
+                    u32 bg = out_row[X];
+                    u32 br = (bg >> 16) & 0xFF, bg_g = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+                    u32 kr = (kp >> 16) & 0xFF, kg = (kp >> 8) & 0xFF, kb = kp & 0xFF;
+                    u32 nr = (kr * a + br * (255 - a)) / 255;
+                    u32 ng = (kg * a + bg_g * (255 - a)) / 255;
+                    u32 nb = (kb * a + bb * (255 - a)) / 255;
+                    out_row[X] = (nr << 16) | (ng << 8) | nb;
+                }
+            }
+        }
     }
 }
 
