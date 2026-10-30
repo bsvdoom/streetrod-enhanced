@@ -22,8 +22,9 @@ bool         retry_is_loss(RetryOutcome o);
 
 /* Reads the slot file into a buffer and checks its structure; touches no game state. */
 bool retry_check(void);
-/* Loads the checked buffer into the game (after a passed retry_check). */
-void retry_apply(void);
+/* Loads the checked buffer into the game (after a passed retry_check). False (a defect only): the game state
+ * was put back as it was. */
+bool retry_apply(void);
 
 /* bob_drive_in, right after race_results() returned r: after a lost race (and a successful save before
  * it) asks "Retry" / "Go on". True = Retry chosen and the slot checked: the caller calls

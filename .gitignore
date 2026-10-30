@@ -9,3 +9,9 @@ build*/
 *.log
 __pycache__/
 /build-launcher-linux/
+/build-ci-*/
+/dist/
+/deps/
+/build-ci-check/
+/build-repro/
+/build-win-launcher/

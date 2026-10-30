@@ -19,6 +19,8 @@ like the Street Rod and Test Drive III launchers it is modelled on.
     as in the usual GOG/eXoDOS copies; the game then runs in that folder and keeps its own saved games there.
   * The original's own command-line switches: **Demo** (`demo`: the game plays itself, Esc ends it), **Races
     drive themselves** (`auto`) and **No mouse** (`nomouse`).
+  * **Retry a lost race** (`--retry`, not in the original): after a lost race at Bob's, Retry runs the same race
+    again from the state just before it (see the main README, "Retry"). Greyed out with Demo.
 * **Options**: **Window size** (`--scale`) and **Start in full screen** (`--fullscreen`; Alt+Enter switches).
 * **Keys in the game**: a reminder of the game's keys, including the port's A / Z gear keys.
 * **Picture**: **Graphics** enhanced (the smooth, high-resolution road view, the default) or original

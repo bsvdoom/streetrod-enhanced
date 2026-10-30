@@ -43,6 +43,6 @@ echo $? >"$d/exit.txt"
 set -e
 tr -d '\r' <"$d/stderr.txt" >"$d/stderr.clean"
 grep -q 'retry: restarted' "$d/stderr.clean" || fail "no restart under Wine (exit $(cat "$d/exit.txt")): $(grep retry: "$d/stderr.clean" | tr '\n' ' ')"
-[ "$(grep 'retry: start' "$d/stderr.clean" | sed 's/.*start //' | sort -u | wc -l)" = 1 ] || fail "restart differs under Wine"
+[ "$(grep 'retry: start' "$d/stderr.clean" | sed 's/.*start //; s/ clock [0-9]*//' | sort -u | wc -l)" = 1 ] || fail "restart differs under Wine"
 [ -n "$(ls "$d/Game" | grep -ix 'hotrod16.sav')" ] || fail "no slot 16 under Wine"
 pass "Wine: lost, Retry, the same race again; slot 16 written"

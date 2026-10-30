@@ -60,10 +60,18 @@ if(WIN32)
     # building, in the wx package).
     if(SRL_WX_MINGW_DIR)
         # The wx gcc13.2 DLLs load the gcc runtime (libgcc_s_seh-1, libstdc++-6, posix threads:
-        # libwinpthread-1), which the wx package does not ship: take the same gcc 13's from the mingw-w64
-        # cross compiler (posix flavour).
-        file(GLOB SRL_GCC_POSIX_DIR LIST_DIRECTORIES true "/usr/lib/gcc/x86_64-w64-mingw32/*-posix")
-        set(SRL_DLL_DIR "${SRL_WX_LIBDIR}" ${SRL_GCC_POSIX_DIR} "/usr/x86_64-w64-mingw32/lib")
+        # libwinpthread-1), which the wx package does not ship: take them from the mingw-w64 cross compiler
+        # used for this build (posix flavour), and only from its own version's folder.
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE SRL_GCC_VER
+                        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX MATCH "^[0-9]+" SRL_GCC_MAJOR "${SRL_GCC_VER}")
+        set(SRL_GCC_POSIX_DIR "/usr/lib/gcc/x86_64-w64-mingw32/${SRL_GCC_MAJOR}-posix")
+        if(NOT EXISTS "${SRL_GCC_POSIX_DIR}/libstdc++-6.dll")
+            message(FATAL_ERROR "No gcc ${SRL_GCC_MAJOR} posix runtime in ${SRL_GCC_POSIX_DIR} (install "
+                                "gcc-mingw-w64-x86-64-posix)")
+        endif()
+        message(STATUS "Launcher: gcc runtime DLLs from ${SRL_GCC_POSIX_DIR}")
+        set(SRL_DLL_DIR "${SRL_WX_LIBDIR}" "${SRL_GCC_POSIX_DIR}" "/usr/x86_64-w64-mingw32/lib")
     else()
         get_filename_component(SRL_DLL_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
     endif()

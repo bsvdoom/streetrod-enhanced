@@ -23,6 +23,7 @@
 static bool enabled;
 static int  slot = 16;
 static bool saved_ok;           /* the save before the current race succeeded */
+static int  tries;              /* restarts of the current race (each adds the race's time) */
 static u8   file_buf[FILE_MAX];
 static u32  file_len;
 
@@ -115,6 +116,7 @@ void retry_before_race(void)
     saved_ok = enabled && flow_save_write(slot_name());
     if (enabled) logf_("saved slot %d %s", slot, saved_ok ? "ok" : "failed");
     if (saved_ok) race_record_save();
+    tries = 0;
     log_start();
 }
 
@@ -197,15 +199,26 @@ bool retry_check(void)
     return ok;
 }
 
-void retry_apply(void)
+/* Loads the checked buffer into the game. retry_check mirrors the loader, so this cannot fail; should it all
+ * the same (a defect), the whole DGROUP (all of the game's state) is put back as it was and false is returned,
+ * so a failed Retry never loses the current game (spec 4.4). */
+static u8 dgroup_backup[0x10000];
+
+bool retry_apply(void)
 {
-    if (file_len == 0) return;
+    if (file_len == 0) return false;
+    memcpy(dgroup_backup, mp(DGROUP, 0), sizeof dgroup_backup);
     for (u16 i = 0; i < 0x24; i++) DSB((u16)(DS_player_name + i)) = file_buf[i];
     SaveReader rd;
-    save_reader_mem(&rd, file_buf + 0x24, file_len - 0x24);
+    /* developer aid SR_RETRY_APPLY_SHORT=1: hand the loader a shortened buffer (tests the fallback) */
+    u32 len = file_len - 0x24;
+    if (getenv("SR_RETRY_APPLY_SHORT")) len = len > 8 ? len - 8 : 0;
+    save_reader_mem(&rd, file_buf + 0x24, len);
     bool ok = flow_load_apply(&rd);
-    logf_(ok ? "applied" : "apply failed after a passed check");
+    if (!ok) memcpy(mp(DGROUP, 0), dgroup_backup, sizeof dgroup_backup);
+    logf_(ok ? "applied" : "apply failed after a passed check; game state put back");
     file_len = 0;
+    return ok;
 }
 
 /* ---- the dialog: screen 0x1E ("The old game will be replaced !" with "Go ahead" -20 / "Forget it" -21,
@@ -271,9 +284,20 @@ bool retry_offer(s16 r)
     if (ans && *ans) yes = ans[n_ans < (int)strlen(ans) ? n_ans++ : (int)strlen(ans) - 1] == 'R';
     else yes = dialog_ask("Lost it ? Run that race again ?", "Retry", "Go on");
     if (!yes) { saved_ok = false; return false; }
-    if (!retry_check()) {
+    if (!retry_check()) {                             /* nothing touched yet: "Go on" */
         saved_ok = false;
         dialog_msg("Retry failed !");                 /* the game's own message box, OK */
+        return false;
+    }
+    /* give register 0Ch back (the race lent it to the opponent; opp_palette_set(-1) works once only), then
+     * load. Should the load fail, retry_apply has put all of DGROUP back (the palette state with it), and
+     * bob_drive_in's own drv_pal_black / opp_palette_set(-1) run as after any race: "Go on". */
+    drv_pal_black();
+    opp_palette_set(-1);
+    if (!retry_apply()) {
+        saved_ok = false;
+        drv_pal_normal();
+        dialog_msg("Retry failed !");
         return false;
     }
     return true;
@@ -285,17 +309,18 @@ static void (*after_start_hook)(void);
 
 void retry_restart_race(void)
 {
-    drv_pal_black();                                  /* give register 0Ch back (lent to the opponent) */
-    opp_palette_set(-1);
-    retry_apply();
     race_record_restore();
+    /* each try costs the race's time (spec 4.5): the reload set the clock back to before the first try, so
+     * add back the earlier tries' cost; the cost of this try is added after race_start, as challenge() does */
+    tries++;
+    flow_clock_add((u32)tries * (DSW(DS_race_type) == 0 ? 0x444u : 0x777u));
     race_record_rnd();
     logf_("restarted opp %u type %u bet %u rnd %u %u %u", rec.opp, rec.type, rec.bet_kind,
           rec.rnd[0], rec.rnd[1], rec.rnd[2]);
     log_start();
     race_start();
     if (after_start_hook) after_start_hook();
-    flow_clock_add(DSW(DS_race_type) == 0 ? 0x444 : 0x777);   /* each try costs the race's time */
+    flow_clock_add(DSW(DS_race_type) == 0 ? 0x444 : 0x777);   /* this try's time, as challenge() adds it */
 }
 
 /* ------------------------------------------------------------------------------------------------ */

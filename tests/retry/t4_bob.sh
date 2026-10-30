@@ -21,7 +21,10 @@ grep -q 'retry: offer' "$d/stderr.txt" || fail "no offer: $(grep retry: "$d/stde
 grep -q 'retry: restarted' "$d/stderr.txt" || fail "no restart: $(grep retry: "$d/stderr.txt" | tr '\n' ' ')"
 starts=$(grep 'retry: start' "$d/stderr.txt" | sed 's/.*start //')
 [ "$(echo "$starts" | wc -l)" -ge 2 ] || fail "only one race start"
-[ "$(echo "$starts" | head -2 | sort -u | wc -l)" = 1 ] || fail "the restarted race differs: $(echo "$starts" | tr '\n' '|')"
+# equal but for the clock, which grows by the race's cost per try (drag 0x444)
+[ "$(echo "$starts" | head -2 | sed 's/ clock [0-9]*//' | sort -u | wc -l)" = 1 ] || fail "the restarted race differs: $(echo "$starts" | tr '\n' '|')"
+c1=$(echo "$starts" | sed -n '1s/.* clock \([0-9]*\).*/\1/p'); c2=$(echo "$starts" | sed -n '2s/.* clock \([0-9]*\).*/\1/p')
+[ "$c2" = $((c1 + 0x444)) ] || fail "the second try's clock: $c2, want $((c1 + 0x444))"
 
 # The dialog box (64,80)-(256,120) in game pixels, 4x in the snapshot: left of the buttons it is the box's
 # plain light background. Only the visible dialog makes that area almost white. Find the end of the first

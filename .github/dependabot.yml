@@ -1,0 +1,8 @@
+# Keeps the commit-pinned GitHub Actions in .github/workflows up to date (each update is a pull request to
+# review; nothing is merged automatically).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0-retry (fork)
+
+- **Retry a lost race** (`--retry`, off by default; launcher: Start > *Retry a lost race*): before each race at
+  Bob's the game is saved silently in slot 16 (`HOTROD16.SAV`, a normal saved game that the save and load lists
+  never show); after a lost race *Retry* runs the same race again (same opponent, kind, bet and random numbers),
+  each try costing the race's time; *Go on* continues as the original. `--retry-slot N` picks another slot.
+- Builds on Linux (links libm) and cross-builds for Windows with mingw-w64 (`cmake/mingw-w64-x86_64.cmake`).
+- Release zips for Linux and Windows built by GitHub Actions from the tag (`tools/ci_build.sh`), third-party
+  downloads pinned by SHA-256.
+- Developer aids (environment variables, off by default): `SR_DEV_SEED`, `SR_DEBUG_SAVE`, `SR_DEBUG_RETRY`,
+  `SR_RETRY_LOG` and more for the headless tests in `tests/retry/`.
+
 ## 0.2.0
 
 - Separate music and sound effects volumes (`--music-volume`, `--sfx-volume`).

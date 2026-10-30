@@ -26,6 +26,7 @@ pass "roundtrip (slot 16), saved games untouched"
 fresh_game "$d"
 SR_DEV_SEED=1 SR_DEBUG_RETRY=save run_headless "$d" 20 "" --retry --retry-slot 3
 grep -q 'retry: saved slot 3 ok' "$d/stderr.txt" || fail "slot 3: $(tail -2 "$d/stderr.txt")"
+grep -q 'warning: --retry-slot 3: saved game 3 is overwritten' "$d/stderr.txt" || fail "no warning for a visible slot"
 SR_DEV_SEED=1 SR_DEBUG_RETRY=save run_headless "$d" 20 "" --retry --retry-slot 99
 grep -q 'retry: saved slot 16 ok' "$d/stderr.txt" || fail "slot 99 not clamped to 16"
 pass "--retry-slot"

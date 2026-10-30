@@ -28,7 +28,17 @@ run() {
 log() { cat "$TESTS/t4-$1.log"; }
 starts() { log "$1" | grep 'retry: start' | sed 's/.*start //'; }
 n_starts() { starts "$1" | wc -l; }
-same_starts() { [ "$(starts "$1" | sort -u | wc -l)" = 1 ]; }
+# every field but the clock is equal on every start; the clock grows by the race's cost (drag 0x444) per try,
+# since each try costs the race's time (spec 4.5, user decision)
+same_starts() {
+    [ "$(starts "$1" | sed 's/ clock [0-9]*//' | sort -u | wc -l)" = 1 ] || return 1
+    local c0="" n=0 c
+    for c in $(starts "$1" | sed -n 's/.* clock \([0-9]*\).*/\1/p'); do
+        [ -n "$c0" ] || c0=$c
+        [ "$c" = $((c0 + n * 0x444)) ] || { echo "clock of try $((n + 1)): $c, want $((c0 + n * 0x444))" >&2; return 1; }
+        n=$((n + 1))
+    done
+}
 before_line() { log "$1" | grep 'debug race: before' | head -1 | sed 's/.*before //'; }
 after_line()  { log "$1" | grep 'debug race: after'  | head -1 | sed 's/.*after //'; }
 
@@ -92,6 +102,13 @@ run BAD 01 "$BAD_KEYS" SR_RETRY_TRUNCATE=1
 log BAD | grep -q 'retry: check failed' || fail "bad file: not refused: $(log BAD | grep retry:)"
 [ "$(n_starts BAD)" = 1 ] || fail "bad file: restarted"
 pass "damaged slot: Retry failed, game continues"
+
+# a load that fails after a passed check (developer aid: a shortened buffer): the game is put back, Go on
+run APPLYFAIL 01 "$BAD_KEYS" SR_RETRY_APPLY_SHORT=1 SR_DEBUG_BET=4
+log APPLYFAIL | grep -q 'retry: apply failed after a passed check; game state put back' || fail "apply fallback: $(log APPLYFAIL | grep retry:)"
+[ "$(n_starts APPLYFAIL)" = 1 ] || fail "apply fallback: restarted"
+after_line APPLYFAIL | grep -q 'money 650 ' || fail "apply fallback: not as Go on (bet lost once): $(after_line APPLYFAIL)"
+pass "a failed load after a passed check: game put back, continues as Go on"
 
 # without --retry: no save, no offer, slot 16 untouched (Game/ may already hold one from playing)
 fresh_game "$d"; before=$(files_hash "$d")

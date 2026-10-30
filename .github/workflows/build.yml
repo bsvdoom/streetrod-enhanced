@@ -1,0 +1,75 @@
+# Builds Street Rod Enhanced (with the Retry option) from source for Linux and Windows, on every push and pull
+# request; a tag "v*" also publishes the zips as a GitHub release. Everything is built by tools/ci_build.sh,
+# the same script anyone can run locally to check the release (see README, "Build").
+#
+# Third-party downloads (SDL3 mingw, wxMSW) are pinned by SHA-256 in tools/ci_build.sh; the actions are pinned
+# by commit. The game's own files are never part of the build or the release.
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    # ubuntu:26.04, pinned by digest so a later rebuild of a tag uses the same image
+    container: ubuntu@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
+    steps:
+      - name: Tools
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git ca-certificates curl p7zip-full cmake ninja-build gcc g++ libsdl3-dev libwxgtk3.2-dev \
+            g++-mingw-w64-x86-64-posix gcc-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64
+          # the exact package versions this build used (apt packages are not pinned)
+          dpkg -l | grep -E 'mingw|libsdl3|libwxgtk|cmake|ninja|g\+\+|gcc' | awk '{print $2, $3}'
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Build (Linux and Windows)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          tools/ci_build.sh all
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: streetrod-enhanced
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: streetrod-enhanced
+          path: dist
+
+      - name: Checksums
+        run: cd dist && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          body: |
+            Street Rod Enhanced with the **Retry** option (`--retry`, or "Retry a lost race" in the launcher):
+            after a lost race at Bob's Drive-In, Retry runs the same race again from the state just before it.
+            Built from this tag by GitHub Actions (`tools/ci_build.sh all`); see the build log for this release.
+            The Windows zip needs 64-bit Windows 10 or 11. The Linux zip is built on Ubuntu 26.04 and needs its
+            SDL 3 and wxWidgets 3.2 libraries (`libsdl3-0`, `libwxgtk3.2`); on older systems build from source.
+            The original game files are not included (see README).

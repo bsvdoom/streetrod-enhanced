@@ -113,6 +113,9 @@ int main(int argc, char **argv)
     /* RETRY: off in demo mode (the game plays itself) */
     for (int k = 1; k < game_argc; k++) if (!SDL_strcasecmp(game_argv[k], "demo")) retry = false;
     retry_set_options(retry, retry_slot_n);
+    if (retry && retry_slot() != 16)
+        fprintf(stderr, "warning: --retry-slot %d: saved game %d is overwritten before every race at Bob's\n",
+                retry_slot(), retry_slot());
     if (!host_init(dir, scale, fullscreen)) return 1;
     host_set_volumes(music_volume, sfx_volume);
     ega_init();                     /* 16-colour planar display: frame source, planes */

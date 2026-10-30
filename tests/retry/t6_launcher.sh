@@ -17,7 +17,7 @@ cmake --build "$LB" >"$LB.build.log" 2>&1 || { tail -20 "$LB.build.log"; fail "l
 pass "Linux launcher builds; --retry passed only when ticked"
 
 # 2. Windows cross build of game + launcher
-WIN="$REPO/build-win"
+WIN="$REPO/build-win-launcher"          # not build-win: t5 configures that one without the launcher
 cmake -S "$REPO" -B "$WIN" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$REPO/cmake/mingw-w64-x86_64.cmake" \
     -DCMAKE_BUILD_TYPE=Release -DSRE_LAUNCHER=ON \
     -DSDL3_DIR="$REPO/../deps/SDL3-3.4.18/x86_64-w64-mingw32/lib/cmake/SDL3" -DSRL_WX_MINGW_DIR="$WX" \

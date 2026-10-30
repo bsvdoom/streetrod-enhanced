@@ -25,4 +25,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
 # -static-libgcc/-static-libstdc++ for the runtime; winpthread (used by libstdc++ and SDL's callers) from its
 # static archive. Not --whole-archive: that would also pull in winpthread's VERSION resource, which clashes
 # with the launcher's own (app.rc).
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic")
+# --no-insert-timestamp: no build time in the PE header, so the same source gives the same exe (reproducible
+# releases, tools/ci_build.sh).
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic -Wl,--no-insert-timestamp")
