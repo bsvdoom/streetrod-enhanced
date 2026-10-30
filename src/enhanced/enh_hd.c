@@ -8,6 +8,12 @@
 #include "game/ui.h"
 #include "game/retry.h"
 
+#ifndef DS_ptr_bank
+#define DS_ptr_bank       0x7AFC
+#define DS_ptr_bank_mask  0x7B00
+#define DS_ptr_shape_off  0x7B04
+#endif
+
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -348,6 +354,58 @@ void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy)
     enh_hd_set_clock(seg, off, dx, dy);
 }
 
+static void enh_hd_draw_cursor(u32 *xrgb, const u32 rgb[16], int res_scale)
+{
+    if (DSC(DS_g_ptr_show) <= 0) return;
+    s16 x = DSS(DS_cursor_x);
+    s16 y = DSS(DS_cursor_y);
+    if (x < 0) x = 0; else if (x > 319) x = 319;
+    if (y < 0) y = 0; else if (y > 199) y = 199;
+
+    u8 sh = (u8)DSB(DS_g_px_shift);
+    s16 px = (s16)((u16)x & (u16)DSW(DS_g_x_align));
+    s16 w = (s16)(320 - px); if (w > 24) w = 24;
+    s16 h = (s16)(200 - y); if (h > 16) h = 16;
+    u16 off = (u16)((u16)((s16)((u16)x & (u16)~DSW(DS_g_x_align)) * (s16)((s16)24 >> sh))
+                    + DSW(DS_ptr_shape_off));
+    FarPtr img = ds_far(DS_ptr_bank);
+    FarPtr msk = ds_far(DS_ptr_bank_mask);
+    if (far_is_null(img) || far_is_null(msk)) return;
+
+    int W = 320 * res_scale;
+    for (int r = 0; r < h; r++) {
+        int sy = y + r;
+        if (sy >= 200) break;
+        for (int c = 0; c < w; c++) {
+            int sx = px + c;
+            if (sx >= 320) break;
+
+            int byte_idx = c >> 3;
+            int bit = 7 - (c & 7);
+            u16 m_off = (u16)(off + msk.off + r * 24 + byte_idx);
+            u8 m_byte = rd8(msk.seg, m_off);
+            if (!((m_byte >> bit) & 1)) continue;
+
+            u16 s_off = (u16)(off + img.off + r * 24 + byte_idx);
+            int col_idx = ((rd8(img.seg, s_off) >> bit) & 1) |
+                          (((rd8(img.seg, (u16)(s_off + 0x600)) >> bit) & 1) << 1) |
+                          (((rd8(img.seg, (u16)(s_off + 0xC00)) >> bit) & 1) << 2) |
+                          (((rd8(img.seg, (u16)(s_off + 0x1200)) >> bit) & 1) << 3);
+            u32 col = rgb ? rgb[col_idx] : 0xFFFFFF;
+
+            for (int dy = 0; dy < res_scale; dy++) {
+                int Y = sy * res_scale + dy;
+                if (Y >= 200 * res_scale) break;
+                u32 *row_out = xrgb + (size_t)Y * W;
+                for (int dx = 0; dx < res_scale; dx++) {
+                    int X = sx * res_scale + dx;
+                    if (X < W) row_out[X] = col;
+                }
+            }
+        }
+    }
+}
+
 void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 {
     ensure_loaded();
@@ -444,9 +502,9 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
-            bool in_d1 = top_mirror_covered && (x >= 30 && x <= 298 && y >= 6 && y <= 66);
-            bool in_d2 = (retry_is_dialog_active() || (x >= 55 && x <= 272 && y >= 66 && y <= 128 && (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8)))
-                         && (x >= 55 && x <= 272 && y >= 66 && y <= 128);
+            bool in_d1 = top_mirror_covered && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
+            bool in_d2 = (x >= 58 && x <= 258 && y >= 70 && y <= 120)
+                         && (retry_is_dialog_active() || (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8));
             if (in_d1 || in_d2) continue;
             if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
@@ -613,22 +671,22 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                     s16 bx, by, bw, bh;
                     ui_bounds(scr, &bx, &by, &bw, &bh);
                     if (bw > 0 && bh > 0) {
-                        ui_boxes[num_boxes].x0 = bx - 2 >= 0 ? bx - 2 : 0;
-                        ui_boxes[num_boxes].y0 = by - 2 >= 0 ? by - 2 : 0;
-                        ui_boxes[num_boxes].x1 = bx + bw + 2 <= 320 ? bx + bw + 2 : 320;
-                        ui_boxes[num_boxes].y1 = by + bh + 2 <= 200 ? by + bh + 2 : 200;
+                        ui_boxes[num_boxes].x0 = bx >= 0 ? bx : 0;
+                        ui_boxes[num_boxes].y0 = by >= 0 ? by : 0;
+                        ui_boxes[num_boxes].x1 = bx + bw <= 320 ? bx + bw : 320;
+                        ui_boxes[num_boxes].y1 = by + bh <= 200 ? by + bh : 200;
                         num_boxes++;
                     }
                 }
             }
         }
 
-        /* Safety bounds for crash dialog (menu 0x19/0x1A: x ~ 30..296, y ~ 6..66)
-         * and retry dialog (x ~ 56..267, y ~ 67..125) */
+        /* Safety bounds for crash dialog (menu 0x19/0x1A: x ~ 37..288, y ~ 7..53)
+         * and retry dialog (x ~ 58..258, y ~ 70..120) */
         if (num_boxes < 8 && top_mirror_covered) {
-            ui_boxes[num_boxes++] = (UIRect){ 30, 6, 296, 66 };
+            ui_boxes[num_boxes++] = (UIRect){ 37, 7, 288, 53 };
         }
-        /* Check if retry dialog is active (center white popup at x ~ 56..267, y ~ 67..125) */
+        /* Check if retry dialog is active (center white popup at x ~ 58..258, y ~ 70..120) */
         if (num_boxes < 8) {
             u16 r_row = 72 < line_compare ? (u16)(start_addr + 72 * EGA_BYTES_PER_LINE)
                                            : (u16)((72 - line_compare) * EGA_BYTES_PER_LINE);
@@ -639,7 +697,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                       ((p2[r_o] >> r_bit & 1) << 2) |
                       ((p3[r_o] >> r_bit & 1) << 3);
             if (r_c == 15) { /* White background of retry dialog */
-                ui_boxes[num_boxes++] = (UIRect){ 56, 67, 267, 125 };
+                ui_boxes[num_boxes++] = (UIRect){ 58, 70, 258, 120 };
             }
         }
 
@@ -655,9 +713,9 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                 int x = X / res_scale;
 
                 /* Never draw cracks over Dialog 1 (crash results) or Dialog 2 (retry offer) */
-                bool in_d1 = top_mirror_covered && (x >= 30 && x <= 298 && y >= 6 && y <= 66);
-                bool in_d2 = (retry_is_dialog_active() || (x >= 55 && x <= 272 && y >= 66 && y <= 128))
-                             && (x >= 55 && x <= 272 && y >= 66 && y <= 128);
+                bool in_d1 = top_mirror_covered && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
+                bool in_d2 = (retry_is_dialog_active() || (x >= 58 && x <= 258 && y >= 70 && y <= 120))
+                             && (x >= 58 && x <= 258 && y >= 70 && y <= 120);
                 if (in_d1 || in_d2) continue;
 
                 /* Never draw cracks over any other active dialog box */
@@ -687,6 +745,9 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             }
         }
     }
+
+    /* Redraw mouse cursor on top of all HD composited layers (left mirror, dials, needles, shifter, cracks) */
+    enh_hd_draw_cursor(xrgb, rgb, res_scale);
 }
 
 void enh_hd_sky_begin(int w, int h, int sa)
