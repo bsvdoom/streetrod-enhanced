@@ -73,11 +73,18 @@ bool enh_hd_is_crashed(void)
 static u8 orig_cockpit[190][320];
 static bool has_orig_cockpit = false;
 
+/* Rear-view mirror cutout cache to retain scenic view when dialog covers top mirror */
+static u32 mirror_cache[32 * 8 * 19 * 8];
+static bool mirror_cache_valid = false;
+static int mirror_cache_mw = 0;
+static int mirror_cache_mh = 0;
+
 void enh_hd_clear_cockpit(void)
 {
     hd_cockpit_active = false;
     has_orig_cockpit = false;
     hd_crashed = false;
+    mirror_cache_valid = false;
 }
 
 bool enh_hd_has_cockpit(void)
@@ -364,14 +371,51 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     int c7_g = (int)((c7_raw >> 8) & 0xFF);
     int c7_b = (int)(c7_raw & 0xFF);
 
+    /* Check if top rear-view mirror cutout is covered (e.g. crash dialog box or msg_box) */
+    bool top_mirror_covered = hd_crashed;
+    if (!top_mirror_covered) {
+        for (int my = 22; my < 41 && !top_mirror_covered; my += 4) {
+            u16 mrow = my < line_compare ? (u16)(start_addr + my * EGA_BYTES_PER_LINE)
+                                         : (u16)((my - line_compare) * EGA_BYTES_PER_LINE);
+            for (int mx = 248; mx < 280; mx += 8) {
+                u16 o = (u16)(mrow + (mx >> 3));
+                int bit = 7 - (mx & 7);
+                int ega_c = ((p0[o] >> bit & 1)     ) |
+                            ((p1[o] >> bit & 1) << 1) |
+                            ((p2[o] >> bit & 1) << 2) |
+                            ((p3[o] >> bit & 1) << 3);
+                if (ega_c == 2 || ega_c == 10) {
+                    top_mirror_covered = true;
+                    break;
+                }
+            }
+        }
+    }
+
     /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
     int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
     int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
     int mw  = 32 * res_scale,  mh  = 19 * res_scale;
-    for (int y = 0; y < mh; y++) {
-        memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
-               xrgb + (size_t)(sy0 + y) * W + sx0,
-               (size_t)mw * sizeof(u32));
+    if (!top_mirror_covered) {
+        if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
+            for (int y = 0; y < mh; y++) {
+                memcpy(mirror_cache + y * mw,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+                memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+            }
+            mirror_cache_valid = true;
+            mirror_cache_mw = mw;
+            mirror_cache_mh = mh;
+        }
+    } else if (mirror_cache_valid && mirror_cache_mw == mw && mirror_cache_mh == mh) {
+        for (int y = 0; y < mh; y++) {
+            memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                   mirror_cache + y * mw,
+                   (size_t)mw * sizeof(u32));
+        }
     }
 
     for (int y = 0; y < 190; y++) {
@@ -396,8 +440,8 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             int dtx = x - 145, dty = y - 142;
             int dsx = x - 196, dsy = y - 142;
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
-            bool in_wheel_spokes = !hd_crashed && (x >= 80 && x < 264 && y >= 163 && y < 190);
-            bool in_shifter = !hd_crashed && (x >= 264 && x < 312 && y >= 123 && y < 166);
+            bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
+            bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
             if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
@@ -417,7 +461,8 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
                     if (a == 0) continue; /* Transparent: windshield/mirror road view */
 
                     /* Dynamic hood/fender recoloring matching player car paint */
-                    if (y >= 90 && y < 114 && X >= 69 * res_scale) {
+                    int hood_min_x = 72 + ((114 - y) * 26) / 16;
+                    if (y >= 96 && y < 114 && x >= hood_min_x) {
                         int pr = (int)((px >> 16) & 0xFF);
                         int pg = (int)((px >> 8) & 0xFF);
                         int pb = (int)(px & 0xFF);
@@ -453,32 +498,30 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     }
 
     /* Render smooth anti-aliased vector needles over the clean HD dials */
-    if (!hd_crashed) {
-        float sc = (float)res_scale;
-        float r_tip  = 1.1f * (sc / 4.0f);
-        float r_tail = 2.4f * (sc / 4.0f);
-        float r_hub  = 4.2f * (sc / 4.0f);
-        float r_pin  = 1.8f * (sc / 4.0f);
+    float sc = (float)res_scale;
+    float r_tip  = 1.1f * (sc / 4.0f);
+    float r_tail = 2.4f * (sc / 4.0f);
+    float r_hub  = 4.2f * (sc / 4.0f);
+    float r_pin  = 1.8f * (sc / 4.0f);
 
-        for (int k = 0; k < 2; k++) {
-            if (!hd_needles[k].active) continue;
-            float x0 = hd_needles[k].x0 * sc;
-            float y0 = hd_needles[k].y0 * sc;
-            float x1 = hd_needles[k].x1 * sc;
-            float y1 = hd_needles[k].y1 * sc;
+    for (int k = 0; k < 2; k++) {
+        if (!hd_needles[k].active) continue;
+        float x0 = hd_needles[k].x0 * sc;
+        float y0 = hd_needles[k].y0 * sc;
+        float x1 = hd_needles[k].x1 * sc;
+        float y1 = hd_needles[k].y1 * sc;
 
-            /* Needle body (tapered capsule) in bright needle red */
-            draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip, x1, y1, r_tail, 0xFF2A1A);
-            /* Subtle orange core highlight */
-            draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip * 0.4f, x1, y1, r_tail * 0.4f, 0xFFAA44);
-            /* Center hub chrome cap and dark pin */
-            draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
-            draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
-        }
+        /* Needle body (tapered capsule) in bright needle red */
+        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip, x1, y1, r_tail, 0xFF2A1A);
+        /* Subtle orange core highlight */
+        draw_capsule_line(xrgb, W, 200 * res_scale, x0, y0, r_tip * 0.4f, x1, y1, r_tail * 0.4f, 0xFFAA44);
+        /* Center hub chrome cap and dark pin */
+        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
+        draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
     }
 
     /* Render HD shifter plate matching transmission type (0: auto, 1: 3-speed, 2: 4-speed) */
-    if (!hd_crashed && img_plate[hd_knob_type].pixels) {
+    if (img_plate[hd_knob_type].pixels) {
         const ImageHD *pimg = &img_plate[hd_knob_type];
         int pw = pimg->w, ph = pimg->h;
         int px0 = 264 * res_scale;
@@ -513,7 +556,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     }
 
     /* Render anti-aliased vector shift knob/handle over the HD plate */
-    if (!hd_crashed && hd_knob_active && img_knob[hd_knob_type].pixels) {
+    if (hd_knob_active && img_knob[hd_knob_type].pixels) {
         const ImageHD *kimg = &img_knob[hd_knob_type];
         int kw = kimg->w, kh = kimg->h;
         int kcx = (264 + hd_knob_x + 12) * res_scale;

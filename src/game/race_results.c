@@ -142,22 +142,24 @@ void crash_show(void)
     arena_reset();
     FarPtr a = pic_get(0x4EB, 1);                                  /* LIB2 #259 */
     FarPtr b = pic_get(0x4EC, 1);                                  /* LIB2 #260 */
-    Rect r = { (s16)desc_w(a), 0x5A, 0, 0, 0, 0x0B };
-    drv_blit_masked(a, g_back(), &r, 1);
-    r = (Rect){ (s16)desc_w(a), (s16)(desc_h(a) - 0x59), 0, 0x59, 0, (s16)((ega ? 0x5A : 0x59) + 0x0B) };
-    drv_blit_masked(a, g_back(), &r, 1);
-    r = (Rect){ (s16)desc_w(b), (s16)desc_h(b), 0, 0, 0, (s16)(ega ? 0x78 : 0x77) };
-    drv_blit(b, g_back(), &r, 1);
-    wheel_knob_crash(DSS(DS_wheel_shown));
-    drv_copy_page(desc_planes(g_back()), desc_planes(g_front()));
-    if (PHS(PLAYER, PH_SPEED) > 0x5A) {                            /* shattered glass */
-        u16 t = 0x53D4;
-        for (s16 d = 0x14; d > -4; d = (s16)(d - 8), t = (u16)(t + 6)) {
-            FarPtr p = pic_get(DSS(t), 1);
-            r = (Rect){ (s16)desc_w(p), (s16)desc_h(p), 0, 0, DSS((u16)(t + 2)), DSS((u16)(t + 4)) };
-            wait_vretraces(d);
-            drv_blit_masked(p, g_back(), &r, 1);
-            drv_copy_page(desc_planes(g_back()), desc_planes(g_front()));
+    if (!enh_hd_enabled()) {
+        Rect r = { (s16)desc_w(a), 0x5A, 0, 0, 0, 0x0B };
+        drv_blit_masked(a, g_back(), &r, 1);
+        r = (Rect){ (s16)desc_w(a), (s16)(desc_h(a) - 0x59), 0, 0x59, 0, (s16)((ega ? 0x5A : 0x59) + 0x0B) };
+        drv_blit_masked(a, g_back(), &r, 1);
+        r = (Rect){ (s16)desc_w(b), (s16)desc_h(b), 0, 0, 0, (s16)(ega ? 0x78 : 0x77) };
+        drv_blit(b, g_back(), &r, 1);
+        wheel_knob_crash(DSS(DS_wheel_shown));
+        drv_copy_page(desc_planes(g_back()), desc_planes(g_front()));
+        if (PHS(PLAYER, PH_SPEED) > 0x5A) {                            /* shattered glass */
+            u16 t = 0x53D4;
+            for (s16 d = 0x14; d > -4; d = (s16)(d - 8), t = (u16)(t + 6)) {
+                FarPtr p = pic_get(DSS(t), 1);
+                r = (Rect){ (s16)desc_w(p), (s16)desc_h(p), 0, 0, DSS((u16)(t + 2)), DSS((u16)(t + 4)) };
+                wait_vretraces(d);
+                drv_blit_masked(p, g_back(), &r, 1);
+                drv_copy_page(desc_planes(g_back()), desc_planes(g_front()));
+            }
         }
     }
     cursor_ctl(-2);
