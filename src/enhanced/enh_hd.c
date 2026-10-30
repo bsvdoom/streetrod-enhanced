@@ -5,6 +5,7 @@
 #include "mem.h"
 #include "platform/ega.h"
 #include "platform/video.h"
+#include "game/ui.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -594,6 +595,49 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 
     /* Render HD cracked windshield overlay on crash */
     if (hd_crashed && img_crash.pixels != NULL) {
+        /* Collect all active UI dialog bounding boxes to ensure NO cracks render over any dialog */
+        typedef struct { int x0, y0, x1, y1; } UIRect;
+        UIRect ui_boxes[8];
+        int num_boxes = 0;
+
+        s16 ui_depth = DSS(0x8B8E);
+        if (ui_depth > 0 && ui_depth <= 4) {
+            for (int d = 0; d < ui_depth && num_boxes < 8; d++) {
+                s16 scr = DSS((u16)(0x8B86 + 2 * d));
+                if (scr >= 0 && scr < 0x30) {
+                    s16 bx, by, bw, bh;
+                    ui_bounds(scr, &bx, &by, &bw, &bh);
+                    if (bw > 0 && bh > 0) {
+                        ui_boxes[num_boxes].x0 = bx - 2 >= 0 ? bx - 2 : 0;
+                        ui_boxes[num_boxes].y0 = by - 2 >= 0 ? by - 2 : 0;
+                        ui_boxes[num_boxes].x1 = bx + bw + 2 <= 320 ? bx + bw + 2 : 320;
+                        ui_boxes[num_boxes].y1 = by + bh + 2 <= 200 ? by + bh + 2 : 200;
+                        num_boxes++;
+                    }
+                }
+            }
+        }
+
+        /* Safety bounds for crash dialog (menu 0x19/0x1A: x ~ 30..296, y ~ 6..66)
+         * and retry dialog (x ~ 56..267, y ~ 67..125) */
+        if (num_boxes < 8 && top_mirror_covered) {
+            ui_boxes[num_boxes++] = (UIRect){ 30, 6, 296, 66 };
+        }
+        /* Check if retry dialog is active (center white popup at x ~ 56..267, y ~ 67..125) */
+        if (num_boxes < 8) {
+            u16 r_row = 72 < line_compare ? (u16)(start_addr + 72 * EGA_BYTES_PER_LINE)
+                                           : (u16)((72 - line_compare) * EGA_BYTES_PER_LINE);
+            u16 r_o = (u16)(r_row + (100 >> 3));
+            int r_bit = 7 - (100 & 7);
+            int r_c = ((p0[r_o] >> r_bit & 1)     ) |
+                      ((p1[r_o] >> r_bit & 1) << 1) |
+                      ((p2[r_o] >> r_bit & 1) << 2) |
+                      ((p3[r_o] >> r_bit & 1) << 3);
+            if (r_c == 15) { /* White background of retry dialog */
+                ui_boxes[num_boxes++] = (UIRect){ 56, 67, 267, 125 };
+            }
+        }
+
         int cw2 = img_crash.w, ch2 = img_crash.h;
         for (int Y = 0; Y < 190 * res_scale; Y++) {
             int y = Y / res_scale;
@@ -604,19 +648,28 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 
             for (int X = 0; X < W; X++) {
                 int x = X / res_scale;
-                /* Avoid drawing cracks over in-game dialog boxes */
-                if (x >= 36 && x <= 284 && y >= 10 && y <= 48) {
-                    u8 orig_c = orig_cockpit[y][x];
-                    u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
-                                               : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
-                    u16 o = (u16)(row + (x >> 3));
-                    int bit = 7 - (x & 7);
-                    int ega_c = ((p0[o] >> bit & 1)     ) |
-                                ((p1[o] >> bit & 1) << 1) |
-                                ((p2[o] >> bit & 1) << 2) |
-                                ((p3[o] >> bit & 1) << 3);
-                    if (ega_c != orig_c) continue;
+
+                /* Windshield check: only render cracks over windshield or hood, never over interior */
+                int hx = (X * cw) / W;
+                if (hx >= cw) hx = cw - 1;
+                int hy = (Y * ch) / (190 * res_scale);
+                if (hy >= ch) hy = ch - 1;
+                u32 cp_base = img_cockpit.pixels[(size_t)hy * cw + hx];
+                u8 cp_a = (u8)(cp_base >> 24);
+                int hood_min_x = 72 + ((114 - y) * 26) / 16;
+                bool is_hood = (y >= 96 && y < 114 && x >= hood_min_x && (x < 100 || x > 245 || y < 105));
+                if (cp_a > 0 && !is_hood) continue;
+
+                /* Never draw cracks over any active dialog box */
+                bool in_dialog = false;
+                for (int b = 0; b < num_boxes; b++) {
+                    if (x >= ui_boxes[b].x0 && x <= ui_boxes[b].x1 &&
+                        y >= ui_boxes[b].y0 && y <= ui_boxes[b].y1) {
+                        in_dialog = true;
+                        break;
+                    }
                 }
+                if (in_dialog) continue;
 
                 int cx = (X * cw2) / W;
                 if (cx >= cw2) cx = cw2 - 1;
