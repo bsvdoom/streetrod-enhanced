@@ -186,9 +186,11 @@ s16 race_run(void)
         DSW(0x58EE) = DSS(DS_driver_id) == -2 ? 1 : 0;
         pic = pic_get(0x3F6, 2);                                   /* LIB2 #14 cockpit */
         enh_dev_dump_pic("cockpit", pic.seg, pic.off);             /* ENH: developer aid SR_ENH_DUMP */
+        enh_hd_set_cockpit(pic.seg, pic.off);                      /* ENH: HD cockpit */
         if (DSW(DS_has_clock) != 0) {
             FarPtr face = pic_get(0x4D8, 2);                       /* LIB2 #240 clock face */
             enh_dev_dump_pic("clock_face", face.seg, face.off);    /* ENH: developer aid SR_ENH_DUMP */
+            enh_hd_set_clock(face.seg, face.off, 0x78, 0x7A);      /* ENH: HD clock */
             Rect rf = { (s16)desc_w(face), (s16)desc_h(face), 0, 0, 0x78, 0x7A };
             drv_blit(face, pic, &rf, 1);
             arena_pop(1);

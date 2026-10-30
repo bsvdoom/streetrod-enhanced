@@ -151,6 +151,25 @@ The steering wheel knob, shifter, gear label, crash picture, start light and mes
 
 ## 9. Later (if the test is good)
 
+* **Left Side Mirror (Bal oldali tükör HD-ban)**:
+  - *Eredeti játék működése*: `race_road.c:1417` szerint az eredeti DOS motor nem külön 3D kamerát renderel, hanem a középső visszapillantó tükör (`back_page()`) bal feléből vág ki egy 32×19-es téglalapot `(248, 22)` koordinátánál, és másolja a 0. oldalra `(8, 103)`-hoz.
+  - *A megközelítés (Visszapillantó kivágás HD-ban, ac9d4cf mintájára)*:
+    Mivel a középső visszapillantó tükröt az `enh_road.c` már nagy felbontásban, simított 60 fps-sel rendereli az `xrgb` pufferbe (`248*S .. 280*S, 22*S .. 41*S`), ezt a képterületet az `enh_hd_compose` fázisban közvetlenül át tudjuk másolni a bal tükör üvegfelületére `(8*S, 103*S)`. A `cockpit.png`-ben a tükörlap belső része átlátszóvá (alpha = 0) válik.
+    *Becsült idő*: **~1.5 – 2 óra**.
+  - *B megközelítés (Külön bal oldali kamera nézet)*:
+    Dedikált bal sáv/autó oldalvonal kamera frustum (`row_at_side_mirror`), ami kissé kifelé és hátrafelé néz.
+    *Becsült idő*: **~4 – 6 óra**.
+
+* **Kormány forgatás (Steering Wheel Spokes Rotation)**:
+  - *Hiba*: A `race_dash.c:206` (`wheel_draw`) kanyarodáskor (`idx != 0`) egy 184×26 pixeles forgatott küllő-képet másol a 0. oldalra `(80, 163)`-hoz. Mivel a `cockpit.png` egyenes kormányt ábrázol, az eltérés miatt a kis felbontású EGA forgatott küllők rárajzolódnak a sima HD kormányra (szellemképes kettős kormány).
+  - *Megoldás*: HD módban a küllők EGA felülírását elnyomjuk, és csak a forgó kormánygombot (piros/fehér gömb a peremen, `shape_draw_dot`) rajzoljuk ki dinamikusan, VAGY 3 HD kormányállást generálunk (egyenes, bal, jobb).
+  - *Becsült idő*: **~1 – 2 óra**.
+
+* **Váltókulissza (Shifter Gate)**:
+  - *Hiba*: A `shifter_draw` (`race_dash.c:227`) egy 48×43 pixeles EGA téglalapot (`gate`) másol a 0. oldalra `(264, 123)`-hoz az automata / 3 sebességes / 4 sebességes kulisszáról. A `cockpit.png`-ben ezen a helyen jelenleg egy ovális hangszórórács van, amire ráül a szögletes, pixeles EGA doboz.
+  - *Megoldás*: A `cockpit.png`-ben a hangszórórács helyére króm keretes HD váltósémát rajzolunk / illesztünk, így csak maga a mozgó váltógomb (`shifter_knob`) marad dinamikus felülírás.
+  - *Becsült idő*: **~1.5 – 2 óra**.
+
 * Bob's Drive-In: mostly still pictures; the same screen-rectangle layer.
 * The opponents' and police cars: 4 pictures per class; the paint is a palette register, so the pictures
   are generated in a neutral colour with a paint mask and coloured at run time (§5.3). The views of one

@@ -2,6 +2,7 @@
  * convex polygon fill at sample centres, and the resolve (linear-light average of each output pixel's
  * samples through the current palette) laid over the scaled EGA picture where the coverage allows. */
 #include "enhanced/enh_internal.h"
+#include "enhanced/enh_hd.h"
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -46,7 +47,10 @@ void enh_fill_rows(double y0, double y1, u8 c)
     if (j0 < b->cy0) j0 = b->cy0;
     if (j1 > b->cy1) j1 = b->cy1;
     if (b->cx1 <= b->cx0) return;
-    for (int j = j0; j < j1; j++) memset(b->px + (size_t)j * b->w + b->cx0, c, (size_t)(b->cx1 - b->cx0));
+    for (int j = j0; j < j1; j++) {
+        memset(b->px + (size_t)j * b->w + b->cx0, c, (size_t)(b->cx1 - b->cx0));
+        enh_hd_sky_clear_span(j, b->cx0, b->cx1);
+    }
 }
 
 /* Convex polygon, vertices in original screen coordinates (any winding). A sample is covered when its
@@ -79,7 +83,10 @@ void enh_fill_poly(const double *xs, const double *ys, int n, u8 c)
         int i0 = (int)ceil(xl - 0.5), i1 = (int)ceil(xr - 0.5);
         if (i0 < b->cx0) i0 = b->cx0;
         if (i1 > b->cx1) i1 = b->cx1;
-        if (i1 > i0) memset(b->px + (size_t)j * b->w + i0, c, (size_t)(i1 - i0));
+        if (i1 > i0) {
+            memset(b->px + (size_t)j * b->w + i0, c, (size_t)(i1 - i0));
+            enh_hd_sky_clear_span(j, i0, i1);
+        }
     }
 }
 
@@ -130,8 +137,21 @@ void enh_resolve(u32 *xrgb, const u32 *pal, int npal, u16 page, int y_end)
                     int X = x * S + ox;
                     float r = 0, g = 0, bl = 0;
                     for (int j = 0; j < aa; j++) {
+                        int buf_j = (int)((y - ENH_VIEW_Y0) * S + oy) * aa + j;
                         const u8 *s = src + (size_t)j * b->w + X * aa;
-                        for (int i = 0; i < aa; i++) { r += lr[s[i]]; g += lg[s[i]]; bl += lb[s[i]]; }
+                        for (int i = 0; i < aa; i++) {
+                            int buf_i = X * aa + i;
+                            u32 sky_c = enh_hd_has_sky() ? enh_hd_sky_pixel(buf_j, buf_i) : 0;
+                            if (sky_c != 0) {
+                                r += to_lin[(sky_c >> 16) & 0xFF];
+                                g += to_lin[(sky_c >> 8) & 0xFF];
+                                bl += to_lin[sky_c & 0xFF];
+                            } else {
+                                r += lr[s[i]];
+                                g += lg[s[i]];
+                                bl += lb[s[i]];
+                            }
+                        }
                     }
                     out[X] = (u32)to_srgb[(int)(r * inv)] << 16 | (u32)to_srgb[(int)(g * inv)] << 8 |
                              to_srgb[(int)(bl * inv)];

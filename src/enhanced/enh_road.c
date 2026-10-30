@@ -10,6 +10,7 @@
  *     sy = 4 (Y + z dy - 76Ch) / z + 60
  * A band between two rows takes the flags of its far row (road_draw_band_front). */
 #include "enhanced/enh_internal.h"
+#include "enhanced/enh_hd.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -157,11 +158,18 @@ static void draw_sky(const Cam *c, bool town, double *ground_y)
 {
     EnhBuf *b = &enh_buf;
     read_sheets();
+    enh_hd_sky_begin(b->w, b->h, b->sa);
     if (town) {                    /* fixed: sky 1Dh rows from 66h, skyline 10h rows from A3h at 2Fh */
         for (int j = 0; j < b->h; j++) {
             double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;
-            if (y < 0x2F) sheet_row(j, 0x66 + (int)floor(y - 0x12), 0);
-            else if (y < 0x3F) sheet_row(j, 0xA3 + (int)floor(y - 0x2F), 0);
+            if (y < 0x2F) {
+                sheet_row(j, 0x66 + (int)floor(y - 0x12), 0);
+                enh_hd_sky_row(j, 0x66 + (int)floor(y - 0x12), 0, true);
+            }
+            else if (y < 0x3F) {
+                sheet_row(j, 0xA3 + (int)floor(y - 0x2F), 0);
+                enh_hd_sky_row(j, 0xA3 + (int)floor(y - 0x2F), 0, true);
+            }
             else { enh_fill_rows(y - 0.5 / b->sa, ENH_VIEW_Y1, COL_ROAD); break; }
         }
         *ground_y = 0x3F;
@@ -172,8 +180,14 @@ static void draw_sky(const Cam *c, bool town, double *ground_y)
     double heading = (s16)trk(TRK_YAW, c->base) + c->hv;
     for (int j = 0; j < b->h; j++) {
         double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;
-        if (y < hy - 12) sheet_row(j, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading);
-        else if (y < hy + 8) sheet_row(j, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading);
+        if (y < hy - 12) {
+            sheet_row(j, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading);
+            enh_hd_sky_row(j, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading, false);
+        }
+        else if (y < hy + 8) {
+            sheet_row(j, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading);
+            enh_hd_sky_row(j, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading, false);
+        }
         else { enh_fill_rows(y - 0.5 / b->sa, ENH_VIEW_Y1, COL_GRASS); break; }
     }
     *ground_y = hy + 8;

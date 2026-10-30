@@ -13,6 +13,7 @@
  *   --aa N            anti-aliasing, N x N samples per output pixel, 1..4 (default 2)
  *   --motion-delay N  percent of a game frame the smooth view runs behind the game, 0..100 (default 100)
  *   --town on|off     enhance the town cruise too (default on)
+ *   --hd on|off       HD remastered cockpit and horizon graphics (default on; off with --classic)
  *   the original's command-line switches are passed on as they are: 1, nomouse, demo, auto, nouemem
  *   (platform.md §5.1)
  */
@@ -38,6 +39,7 @@ static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] "
                     "[--music-volume N] [--sfx-volume N] [--retry] [--retry-slot N] "
+                    "[--town on|off] [--hd on|off] "
                     "[1] [nomouse] [demo] [auto] [nouemem]\n", prog);
     return 2;
 }
@@ -68,7 +70,7 @@ int main(int argc, char **argv)
     const char *dir = "Game";
     int scale = 3;
     bool check = false, fullscreen = false;
-    bool classic = false, town = true;
+    bool classic = false, town = true, hd = true;
     int music_volume = 100, sfx_volume = 100;
     int res_scale = -1, aa = ENH_DEFAULT_AA, motion_delay = ENH_DEFAULT_MOTION_DELAY;
     bool retry = false;
@@ -88,6 +90,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--aa") && v) { aa = atoi(v); i++; }
         else if (!strcmp(a, "--motion-delay") && v) { motion_delay = atoi(v); i++; }
         else if (!strcmp(a, "--town") && v) { town = strcmp(v, "off") != 0; i++; }
+        else if (!strcmp(a, "--hd") && v) { hd = strcmp(v, "off") != 0; i++; }
         else if (!strcmp(a, "--retry")) retry = true;                          /* RETRY: */
         else if (!strcmp(a, "--retry-slot") && v) { retry_slot_n = atoi(v); i++; }
         else if (a[0] == '-' && a[1] == '-') return usage(argv[0]);
@@ -110,6 +113,7 @@ int main(int argc, char **argv)
 
     if (res_scale < 0) res_scale = classic ? 1 : ENH_DEFAULT_RES_SCALE;
     enh_init(!classic, res_scale, aa, motion_delay, town);
+    enh_hd_init(hd && !classic);
     /* RETRY: off in demo mode (the game plays itself) */
     for (int k = 1; k < game_argc; k++) if (!SDL_strcasecmp(game_argv[k], "demo")) retry = false;
     retry_set_options(retry, retry_slot_n);

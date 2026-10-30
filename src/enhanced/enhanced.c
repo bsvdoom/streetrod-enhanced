@@ -67,6 +67,7 @@ void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town)
     while (enh_opt.res_scale * enh_opt.aa > ENH_MAX_SAMPLES) enh_opt.aa--;
     enh_opt.motion_delay = SDL_clamp(motion_delay, 0, 100);
     enh_opt.town = town;
+    enh_hd_init(enabled);
     const char *t = SDL_getenv("SR_ENH_TRACE");
     if (enabled && t && *t && (trace = fopen(t, "w")) != NULL) setvbuf(trace, NULL, _IOLBF, 4096);
 }
@@ -222,6 +223,7 @@ bool enh_compose(u32 *xrgb, const u32 rgb[16])
     enh_draw_road(&v);
     int y_end = SDL_min(ENH_VIEW_Y1, ega_line_compare());
     enh_resolve(xrgb, rgb, 16, shown_start, y_end);
+    enh_hd_compose(xrgb, enh_opt.res_scale);
     if (trace) {
         static double last_pos;
         fprintf(trace, "%llu pos %.4f d %.4f lat %.1f rh %.2f opp %.3f ms %.2f\n",

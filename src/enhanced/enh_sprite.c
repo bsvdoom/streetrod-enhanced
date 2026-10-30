@@ -2,6 +2,7 @@
  * police car's views) and rectangles of the off-screen sheets in video memory (signs, billboards), decoded
  * to palette-index images, and drawn scaled into the sample buffer. */
 #include "enhanced/enh_internal.h"
+#include "enhanced/enh_hd.h"
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -98,7 +99,10 @@ void enh_draw_image(const EnhImage *img, double x0, double y0, double x1, double
             int u = (int)((i + 0.5 - sl) * du);
             if (u < 0 || u >= img->w) continue;
             u8 c = src[flip ? img->w - 1 - u : u];
-            if (c != ENH_CLEAR) out[i] = c;
+            if (c != ENH_CLEAR) {
+                out[i] = c;
+                enh_hd_sky_clear_pixel(j, i);
+            }
         }
     }
 }
