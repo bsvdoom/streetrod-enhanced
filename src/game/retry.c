@@ -241,8 +241,12 @@ static u16 put_text(u16 at, const char *s)
 }
 
 /* true = the first button. Keys: R / Enter = first, G / Esc = second. */
+static bool retry_dlg_active = false;
+bool retry_is_dialog_active(void) { return retry_dlg_active; }
+
 static bool dialog_ask(const char *text, const char *yes, const char *no)
 {
+    retry_dlg_active = true;
     static const u16 recs[3] = { DLG_REC_YES, DLG_REC_NO, DLG_REC_TEXT };
     const char *str[3] = { yes, no, text };
     u16 saved_lab[3];
@@ -268,6 +272,7 @@ static bool dialog_ask(const char *text, const char *yes, const char *no)
 
     for (int i = 0; i < 8; i++) DSB((u16)(km + i)) = saved_km[i];
     for (int i = 0; i < 3; i++) DSW((u16)(0x09F4 + 0x12 * recs[i] + 4)) = saved_lab[i];
+    retry_dlg_active = false;
     return r == -20;
 }
 

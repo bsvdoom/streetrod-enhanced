@@ -6,6 +6,7 @@
 #include "platform/ega.h"
 #include "platform/video.h"
 #include "game/ui.h"
+#include "game/retry.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -443,6 +444,10 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
+            bool in_d1 = top_mirror_covered && (x >= 30 && x <= 298 && y >= 6 && y <= 66);
+            bool in_d2 = (retry_is_dialog_active() || (x >= 55 && x <= 272 && y >= 66 && y <= 128 && (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8)))
+                         && (x >= 55 && x <= 272 && y >= 66 && y <= 128);
+            if (in_d1 || in_d2) continue;
             if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
             for (int oy = 0; oy < res_scale; oy++) {
@@ -649,18 +654,13 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             for (int X = 0; X < W; X++) {
                 int x = X / res_scale;
 
-                /* Windshield check: only render cracks over windshield or hood, never over interior */
-                int hx = (X * cw) / W;
-                if (hx >= cw) hx = cw - 1;
-                int hy = (Y * ch) / (190 * res_scale);
-                if (hy >= ch) hy = ch - 1;
-                u32 cp_base = img_cockpit.pixels[(size_t)hy * cw + hx];
-                u8 cp_a = (u8)(cp_base >> 24);
-                int hood_min_x = 72 + ((114 - y) * 26) / 16;
-                bool is_hood = (y >= 96 && y < 114 && x >= hood_min_x && (x < 100 || x > 245 || y < 105));
-                if (cp_a > 0 && !is_hood) continue;
+                /* Never draw cracks over Dialog 1 (crash results) or Dialog 2 (retry offer) */
+                bool in_d1 = top_mirror_covered && (x >= 30 && x <= 298 && y >= 6 && y <= 66);
+                bool in_d2 = (retry_is_dialog_active() || (x >= 55 && x <= 272 && y >= 66 && y <= 128))
+                             && (x >= 55 && x <= 272 && y >= 66 && y <= 128);
+                if (in_d1 || in_d2) continue;
 
-                /* Never draw cracks over any active dialog box */
+                /* Never draw cracks over any other active dialog box */
                 bool in_dialog = false;
                 for (int b = 0; b < num_boxes; b++) {
                     if (x >= ui_boxes[b].x0 && x <= ui_boxes[b].x1 &&
