@@ -14,7 +14,7 @@ void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */
-void enh_hd_compose(u32 *xrgb, int res_scale);
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale);
 
 /* Sky and horizon sampling (Section 5.2): fills row j of hd_sky_buf if HD sheets are present */
 void enh_hd_sky_begin(int w, int h, int sa);

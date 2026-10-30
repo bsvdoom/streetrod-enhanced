@@ -271,7 +271,7 @@ void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy)
     enh_hd_set_clock(seg, off, dx, dy);
 }
 
-void enh_hd_compose(u32 *xrgb, int res_scale)
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 {
     ensure_loaded();
     if (!hd_opt_enabled || !img_cockpit.pixels || !has_orig_cockpit) return;
@@ -285,6 +285,16 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
     const u8 *p3 = ega_plane(3);
 
     int cw = img_cockpit.w, ch = img_cockpit.h;
+
+    /* Body paint colors from EGA palette registers 6 and 7 */
+    u32 c6_raw = rgb ? rgb[6] : 0x0000AA;
+    u32 c7_raw = rgb ? rgb[7] : 0x5555FF;
+    int c6_r = (int)((c6_raw >> 16) & 0xFF);
+    int c6_g = (int)((c6_raw >> 8) & 0xFF);
+    int c6_b = (int)(c6_raw & 0xFF);
+    int c7_r = (int)((c7_raw >> 16) & 0xFF);
+    int c7_g = (int)((c7_raw >> 8) & 0xFF);
+    int c7_b = (int)(c7_raw & 0xFF);
 
     /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
     int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
@@ -336,6 +346,36 @@ void enh_hd_compose(u32 *xrgb, int res_scale)
                     u32 px = hd_row[hx];
                     u8 a = (u8)(px >> 24);
                     if (a == 0) continue; /* Transparent: windshield/mirror road view */
+
+                    /* Dynamic hood/fender recoloring matching player car paint */
+                    if (y >= 90 && y < 114 && X >= 58 * res_scale) {
+                        int pr = (int)((px >> 16) & 0xFF);
+                        int pg = (int)((px >> 8) & 0xFF);
+                        int pb = (int)(px & 0xFF);
+                        int lum = (299 * pr + 587 * pg + 114 * pb) / 1000;
+                        bool in_wheel = (Y > 105 * res_scale && X > 105 * res_scale && X < 240 * res_scale &&
+                                         abs(pr - pg) < 6 && abs(pg - pb) < 6);
+                        if (!in_wheel && (pb > pr + 4) && (pb > pg + 2) && lum < 160) {
+                            int t = (lum * 256) / 45;
+                            if (t > 512) t = 512;
+                            int nr, ng, nb;
+                            if (t < 256) {
+                                int factor = 90 + ((166 * t) >> 8);
+                                nr = (c6_r * factor) >> 8;
+                                ng = (c6_g * factor) >> 8;
+                                nb = (c6_b * factor) >> 8;
+                            } else {
+                                int t2 = t - 256;
+                                nr = (c6_r * (256 - t2) + c7_r * t2) >> 8;
+                                ng = (c6_g * (256 - t2) + c7_g * t2) >> 8;
+                                nb = (c6_b * (256 - t2) + c7_b * t2) >> 8;
+                            }
+                            if (nr > 255) nr = 255;
+                            if (ng > 255) ng = 255;
+                            if (nb > 255) nb = 255;
+                            px = ((u32)nr << 16) | ((u32)ng << 8) | (u32)nb;
+                        }
+                    }
 
                     out[X] = px & 0xFFFFFF;
                 }

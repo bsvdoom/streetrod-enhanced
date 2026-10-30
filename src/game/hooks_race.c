@@ -57,6 +57,8 @@ bool race_debug_main(void)
     status_label(ds_str(DSW(0x49DC)));
     u16 car = car_new(env_int("SR_DEBUG_MODEL", 5), 0, 0);
     if (DSW(DS_car) == 0) DSW(DS_car) = car;
+    s16 col = env_int("SR_DEBUG_COLOUR", -1);
+    if (col >= 0) DSB((u16)(car + 4)) = (u8)col;
     CARW(cur_car(), CAR_GAS) = 0xAA;                               /* full tank */
     car_setup(cur_car(), PLAYER);
     if (strcmp(mode, "drag") == 0 || strcmp(mode, "road") == 0) {
