@@ -178,7 +178,7 @@ LauncherFrame::LauncherFrame()
     drawDistance_->SetSelection(distSel);
     hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
-    fixedSky_->SetValue(settings::GetInt(SECTION, "FixedSky", 1) != 0);
+    reducedSky_->SetValue(settings::GetInt(SECTION, "ReducedSky", 1) != 0);
     ShowSounds(sounds_);
     loading_ = false;
     UpdateState();
@@ -350,10 +350,10 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD)");
     hd_->SetToolTip("Draws detailed high-resolution instruments, gauges, and car interior graphics.");
     pictureBox->Add(hd_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
-    fixedSky_ = new wxCheckBox(pb, wxID_ANY, "Fixed s&kybox rotation");
-    fixedSky_->SetToolTip("The sky and the horizon turn a quarter as much as in the original, which suits the "
+    reducedSky_ = new wxCheckBox(pb, wxID_ANY, "Reduced s&kybox rotation");
+    reducedSky_->SetToolTip("The sky and the horizon turn a quarter as much as in the original, which suits the "
                           "longer draw distance. Off: as in the original.");
-    pictureBox->Add(fixedSky_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
+    pictureBox->Add(reducedSky_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
 
     town_ = new wxCheckBox(pb, wxID_ANY, "Drives through &town enhanced too");
     pictureBox->Add(town_, 0, wxALL, gap);
@@ -537,7 +537,7 @@ void LauncherFrame::UpdateState() {
     drawDistance_->Enable(enhanced);
     hd_->Enable(enhanced);
     town_->Enable(enhanced);
-    fixedSky_->Enable(enhanced);
+    reducedSky_->Enable(enhanced);
     retry_->Enable(!demo_->GetValue());               // the game switches Retry off in the demo
     book_->GetPage(PAGE_MAIN)->Layout();
     if (book_->GetSelection() == PAGE_MAIN) FitPage();  // the notes change the page's size
@@ -580,7 +580,7 @@ void LauncherFrame::Play() {
     options.drawDistance = DRAW_DISTANCES[drawDistance_->GetSelection()];
     options.hd = hd_->GetValue();
     options.town = town_->GetValue();
-    options.fixedSky = fixedSky_->GetValue();
+    options.reducedSky = reducedSky_->GetValue();
     options.sounds = sounds_;
     wxString error;
     if (!LaunchGame(options, error)) wxMessageBox(error, APP_TITLE, wxOK | wxICON_ERROR, this);
@@ -608,7 +608,7 @@ void LauncherFrame::Save() {
     settings::SetInt(SECTION, "DrawDistance", DRAW_DISTANCES[drawDistance_->GetSelection()]);
     settings::SetInt(SECTION, "HD", hd_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Town", town_->GetValue() ? 1 : 0);
-    settings::SetInt(SECTION, "FixedSky", fixedSky_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "ReducedSky", reducedSky_->GetValue() ? 1 : 0);
     settings::SaveWindowPosition(SECTION, this);
 }
 

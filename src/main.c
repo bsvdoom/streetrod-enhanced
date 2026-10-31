@@ -13,7 +13,7 @@
  *   --aa N            anti-aliasing, N x N samples per output pixel, 1..4 (default 2)
  *   --motion-delay N  percent of a game frame the smooth view runs behind the game, 0..100 (default 100)
  *   --town on|off     enhance the town cruise too (default on)
- *   --fixed-sky-rotation on|off  the sky and the horizon turn a quarter as much as in the original (default on)
+ *   --reduced-sky-rotation on|off  the sky and the horizon turn a quarter as much as in the original (default on)
  *   --hd on|off       HD remastered cockpit and horizon graphics (default on; off with --classic)
  *   the original's command-line switches are passed on as they are: 1, nomouse, demo, auto, nouemem
  *   (platform.md §5.1)
@@ -40,7 +40,7 @@ static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] "
                     "[--music-volume N] [--sfx-volume N] [--retry] [--retry-slot N] "
-                    "[--town on|off] [--fixed-sky-rotation on|off] [--hd on|off] [--draw-distance N] [--fps N] [--vsync on|off] "
+                    "[--town on|off] [--reduced-sky-rotation on|off] [--hd on|off] [--draw-distance N] [--fps N] [--vsync on|off] "
                     "[1] [nomouse] [demo] [auto] [nouemem]\n", prog);
     return 2;
 }
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     int scale = 3;
     bool check = false, fullscreen = false;
     bool classic = false, town = true, hd = true;
-    int sky_scroll = ENH_FIXED_SKY_SCROLL;
+    int sky_scroll = ENH_REDUCED_SKY_SCROLL;
     int music_volume = 100, sfx_volume = 100;
     int res_scale = -1, aa = ENH_DEFAULT_AA, motion_delay = ENH_DEFAULT_MOTION_DELAY;
     int draw_distance = ENH_DEFAULT_DRAW_DISTANCE;
@@ -96,8 +96,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--motion-delay") && v) { motion_delay = atoi(v); i++; }
         else if (!strcmp(a, "--town") && v) { town = strcmp(v, "off") != 0; i++; }
         else if (!strcmp(a, "--hd") && v) { hd = strcmp(v, "off") != 0; i++; }
-        else if (!strcmp(a, "--fixed-sky-rotation") && v) {
-            sky_scroll = strcmp(v, "off") != 0 ? ENH_FIXED_SKY_SCROLL : 100;
+        else if (!strcmp(a, "--reduced-sky-rotation") && v) {
+            sky_scroll = strcmp(v, "off") != 0 ? ENH_REDUCED_SKY_SCROLL : 100;
             i++;
         }
         else if (!strcmp(a, "--draw-distance") && v) { draw_distance = atoi(v); i++; }

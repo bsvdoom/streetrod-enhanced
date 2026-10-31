@@ -324,7 +324,7 @@ static inline void render_sky_band(const RenderCmd *cmd, int j_start, int j_end)
         double hy = cmd->sky.hy;
         double heading = cmd->sky.heading;
         /* the original moves the sky x2 and the horizon x4 the heading; turning, both are at infinity and move
-         * alike, so with the fixed rotation the sky goes with the horizon */
+         * alike, so with the reduced rotation the sky goes with the horizon */
         double sky_k = enh_opt.sky_scroll < 100 ? 4.0 : 2.0;
         for (int j = j_start; j < j_end; j++) {
             double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;

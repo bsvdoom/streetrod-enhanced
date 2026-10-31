@@ -124,7 +124,7 @@ Tests of the Retry option (headless, on a copy of `Game/`): `tests/retry/t*.sh`.
 | `--vsync on\|off` | Wait for vertical sync (default on) |
 | `--motion-delay P` | Smooth view delay, % of a game frame (default 100) |
 | `--town on\|off` | Enhanced drives through town (default on) |
-| `--fixed-sky-rotation on\|off` | The sky and the horizon turn a quarter as much as in the original (default on; off = as the original) |
+| `--reduced-sky-rotation on\|off` | The sky and the horizon turn a quarter as much as in the original (default on; off = as the original) |
 | `--music-volume P` | Music volume, % (default 100) |
 | `--sfx-volume P` | Sound effects volume, % (default 100) |
 | `--classic` | Original picture only |
