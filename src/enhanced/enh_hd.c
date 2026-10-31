@@ -48,13 +48,23 @@ static ImageHD img_sheets_town;
 static ImageHD img_plate[3]; /* 0: auto, 1: 3-speed, 2: 4-speed */
 static ImageHD img_knob[3];  /* 0: auto, 1: 3-speed, 2: 4-speed */
 static ImageHD img_crash;
+static ImageHD img_wheel[3];
+static ImageHD img_clock;     /* the clock face of automatic cars, 260 x 260 around the tachometer's centre */
+#define CLOCK_CX 581          /* the tachometer's centre in cockpit.png (1280 x 760) */
+#define CLOCK_CY 569  /* the wheel straight (in the cockpit picture), turned left, turned right */
 
 static bool hd_cockpit_active = false;
 static bool hd_crashed = false;
-static bool hd_clock = false;           /* an automatic car: the clock instead of the tachometer */
+static bool hd_clock = false;
+static int  hd_wheel = 0;               /* wheel_draw's picture: 0 straight, 1 left, 2 right */           /* an automatic car: the clock instead of the tachometer */
 static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
 static bool hd_knob_active = false;
+
+void enh_hd_set_wheel(int idx)
+{
+    hd_wheel = idx >= 0 && idx <= 2 ? idx : 0;
+}
 
 void enh_hd_set_knob_type(int type)
 {
@@ -104,6 +114,14 @@ typedef struct {
 } NeedleHD;
 
 static NeedleHD hd_needles[2]; /* 0: speedo, 1: tach */
+static NeedleHD hd_hands[2];   /* the clock's hour and minute hands (base -> tip) */
+
+void enh_hd_set_clock_hand(int minute, int x0, int y0, int x1, int y1)
+{
+    NeedleHD *h = &hd_hands[minute ? 1 : 0];
+    h->x0 = (float)x0; h->y0 = (float)y0; h->x1 = (float)x1; h->y1 = (float)y1;
+    h->active = true;
+}
 
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1)
 {
@@ -308,6 +326,9 @@ static void ensure_loaded(void)
     load_asset("knob_3speed", &img_knob[1]);
     load_asset("knob_4speed", &img_knob[2]);
     load_asset("crash", &img_crash);
+    load_asset("clock", &img_clock);
+    load_asset("wheel_left", &img_wheel[1]);
+    load_asset("wheel_right", &img_wheel[2]);
     if (img_cockpit.pixels) {                  /* the see-through pixels: any part of their block clear */
         int cw = img_cockpit.w, ch = img_cockpit.h;
         for (int y = 0; y < 190; y++)
@@ -349,8 +370,10 @@ void enh_hd_set_cockpit(u16 seg, u16 off)
     hd_cockpit_active = true;
     hd_crashed = false;
     hd_clock = false;
+    hd_wheel = 0;
     hd_knob_active = false;
     hd_needles[0].active = hd_needles[1].active = false;
+    hd_hands[0].active = hd_hands[1].active = false;
     FarPtr d = { off, seg };
     if (far_is_null(d)) return;
     int w = desc_w(d), h = desc_h(d), stride = desc_stride(d);
@@ -583,7 +606,8 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
             int dtx = x - 145, dty = y - 142;
             int dsx = x - 196, dsy = y - 142;
             bool in_tach = dtx * dtx + dty * dty <= 27 * 27;
-            if (in_tach && hd_clock) continue;                    /* the original's clock */
+            bool hd_face = in_tach && hd_clock && img_clock.pixels;
+            if (in_tach && hd_clock && !hd_face) continue;      /* no HD face: the original's clock */
             bool in_dial = in_tach || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
@@ -595,11 +619,39 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
                 const u32 *hd_row = img_cockpit.pixels + (size_t)hy_of[Y] * cw;
+                const ImageHD *wimg = in_wheel_spokes && hd_wheel ? &img_wheel[hd_wheel] : NULL;
+                int wy = 0, wx0 = 0;
+                if (wimg && wimg->pixels) {                       /* the turned wheel's strip */
+                    wy = hy_of[Y] - 163 * ch / 190;
+                    wx0 = 80 * cw / 320;
+                    if (wy < 0 || wy >= wimg->h) wimg = NULL;
+                } else {
+                    wimg = NULL;
+                }
                 u32 *out = xrgb + (size_t)Y * W;
 
                 for (int ox = 0; ox < res_scale; ox++) {
                     int X = x * res_scale + ox;
                     u32 px = hd_row[hx_of[X]];
+                    if (hd_face) {                                /* the HD clock face over it */
+                        int kx = hx_of[X] - (CLOCK_CX - img_clock.w / 2);
+                        int ky = hy_of[Y] - (CLOCK_CY - img_clock.h / 2);
+                        if (kx >= 0 && kx < img_clock.w && ky >= 0 && ky < img_clock.h) {
+                            u32 k = img_clock.pixels[(size_t)ky * img_clock.w + kx];
+                            u32 ka = k >> 24;
+                            if (ka == 255) px = k;
+                            else if (ka) {
+                                u32 r = (((k >> 16) & 0xFF) * ka + ((px >> 16) & 0xFF) * (255 - ka)) / 255;
+                                u32 g = (((k >> 8) & 0xFF) * ka + ((px >> 8) & 0xFF) * (255 - ka)) / 255;
+                                u32 b = ((k & 0xFF) * ka + (px & 0xFF) * (255 - ka)) / 255;
+                                px = 0xFF000000u | r << 16 | g << 8 | b;
+                            }
+                        }
+                    }
+                    if (wimg) {
+                        int wx = hx_of[X] - wx0;
+                        if (wx >= 0 && wx < wimg->w) px = wimg->pixels[(size_t)wy * wimg->w + wx];
+                    }
                     u8 a = (u8)(px >> 24);
                     if (a == 0) continue; /* Transparent: windshield/mirror road view */
 
@@ -660,6 +712,20 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
         /* Center hub chrome cap and dark pin */
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
+    }
+
+    /* The clock's hands over the HD face (automatic cars) */
+    if (hd_clock && img_clock.pixels) {
+        for (int k = 0; k < 2; k++) {
+            if (!hd_hands[k].active) continue;
+            float hw = k ? 1.7f : 2.4f;
+            draw_capsule_line(xrgb, W, 200 * res_scale, hd_hands[k].x0 * sc, hd_hands[k].y0 * sc, hw * (sc / 4.0f),
+                              hd_hands[k].x1 * sc, hd_hands[k].y1 * sc, 0.9f * (sc / 4.0f), 0xF2F2F2);
+        }
+        if (hd_hands[0].active || hd_hands[1].active) {
+            draw_aa_circle(xrgb, W, 200 * res_scale, 145.5f * sc, 142.5f * sc, r_hub, 0xD4D8E0);
+            draw_aa_circle(xrgb, W, 200 * res_scale, 145.5f * sc, 142.5f * sc, r_pin, 0x24262A);
+        }
     }
 
     /* Render HD shifter plate matching transmission type (0: auto, 1: 3-speed, 2: 4-speed) */

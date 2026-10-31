@@ -21,9 +21,11 @@ comes along with it: at 8 frames a second, a high-resolution picture only makes 
 * **Multithreaded rasterizer**: a command list recorded per frame, executed and resolved in horizontal bands
   on a worker per logical core (`enh_raster.c`). The serial parts (compositing, upload, present) still limit
   the frame rate: see `docs/TODO.md`.
-* **High-definition cockpit (HD)**: high-resolution cockpit, vector needles and shifter knobs, sampled
-  nearest-texel through per-frame mapping tables (`enh_hd.c`). The pictures (`Game/hd/*.png`) are made from
-  the game's own and are not distributed with the source.
+* **High-definition cockpit (HD)**: high-resolution cockpit, vector needles and shifter knobs, the
+  steering wheel in the original's three positions, an HD clock face with vector hands for automatic cars,
+  sampled
+  nearest-texel through per-frame mapping tables (`enh_hd.c`). The pictures are in `assets/hd`; the build
+  copies them beside the program as `hd/`, the release ships them (a game folder's `hd/` overrides them).
 * **Frame pacing & VSync**: with VSync the present paces the frames; `--fps` caps them (with VSync only below
   the refresh rate).
 * Still the original's picture, laid over the enhanced view: the drag race's start light, the messages,

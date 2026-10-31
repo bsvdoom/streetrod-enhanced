@@ -1,7 +1,8 @@
 #pragma once
 /* HD pictures: cockpit, dashboard, sky and horizon sheets (ENHANCED.md,
  * docs/superpowers/specs/2026-10-30-hd-cockpit-design.md).
- * Loads Game/hd/cockpit.png, Game/hd/sheets_race.png, Game/hd/sheets_town.png. */
+ * Loads hd/<name>.png from the game folder (an override), else from beside the program (assets/hd in the
+ * source, copied there by the build and shipped in the release). */
 #include "types.h"
 
 void enh_hd_init(bool enabled);
@@ -14,9 +15,11 @@ void enh_hd_clear_cockpit(void);
 bool enh_hd_has_cockpit(void);
 void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
+void enh_hd_set_wheel(int idx);                  /* wheel_draw: 0 straight, 1 turned left, 2 right */
 void enh_hd_set_knob_type(int type);
 void enh_hd_set_knob_pos(int x, int y);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
+void enh_hd_set_clock_hand(int minute, int x0, int y0, int x1, int y1);   /* clock_hand: base -> tip */
 void enh_hd_set_crashed(bool crashed);
 
 /* The dialogs and menus on the game's UI stack, [x0, x1) x [y0, y1) in original pixels: the original's

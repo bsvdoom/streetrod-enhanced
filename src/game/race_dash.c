@@ -148,6 +148,7 @@ static void clock_hand(s16 a, s16 delta, u16 tip)
     drv_line(bx, by, mx, my, col);
     drv_line(tx, ty, px, py, col);
     drv_line(tx, ty, mx, my, col);
+    enh_hd_set_clock_hand(tip == 0x6912, bx, (s16)(by + 100), tx, (s16)(ty + 100));   /* ENH: HD clock */
 }
 
 /* 0f38:05f2 clock_draw: the dash clock of automatic cars (face LIB2 #240) */
@@ -207,6 +208,7 @@ void wheel_knob_crash(s16 pos)
 void wheel_draw(s16 nw, s16 old, FarPtr dst)
 {
     s16 idx = (s16)((nw != 0) + (nw > 0));
+    if (idx < 3) enh_hd_set_wheel(idx);                            /* ENH: the HD wheel's position */
     if (idx < 3 && idx != DSS(0x0350)) {
         Rect r = { 0xB8, 0x1A, 0, 0, 0x50, (s16)((vga() ? 0 : 0x64) + 0x3F) };
         drv_blit(ds_far((u16)(0x6C28 + 4 * idx)), dst, &r, 1);

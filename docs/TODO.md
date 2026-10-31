@@ -38,7 +38,5 @@ Lépések:
 
 ## Nyitott tételek az átvizsgálásból
 
-Lásd [AUDIT-2026-10-31.md](AUDIT-2026-10-31.md):
-- kormány-forgatás HD módban (döntés kell);
-- HD óralap az automata autókhoz, a sötét ellipszis a `cockpit.png`-ben (képfeladatok);
-- a `Game/hd` képek kitisztítása a helyi git-historyból push előtt (döntés kell).
+Lásd [AUDIT-2026-10-31.md](AUDIT-2026-10-31.md): a motorháztető-átszínezés heurisztikája (alacsony
+prioritás).

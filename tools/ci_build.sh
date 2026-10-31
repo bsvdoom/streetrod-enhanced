@@ -45,6 +45,7 @@ linux() {
     cmake --build build-ci-linux
     rm -rf dist/linux && mkdir -p dist/linux
     cp build-ci-linux/streetrod-enhanced "build-ci-linux/Street Rod Enhanced" dist/linux/
+    cp -r assets/hd dist/linux/
 }
 
 windows() {
@@ -53,6 +54,7 @@ windows() {
     cmake --build build-ci-win
     rm -rf dist/windows && mkdir -p dist/windows
     cp build-ci-win/*.exe build-ci-win/*.dll dist/windows/
+    cp -r assets/hd dist/windows/
     # the licences of what is shipped beside our programs
     mkdir -p dist/windows/licenses
     cp "$DEPS/SDL3-$SDL3_VER/LICENSE.txt" dist/windows/licenses/SDL3-LICENSE.txt

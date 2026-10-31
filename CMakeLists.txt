@@ -48,6 +48,11 @@ if(WIN32)
     endif()
 endif()
 
+# The HD pictures (--hd on) beside the program: hd/*.png (enh_hd.c looks in the game folder first)
+add_custom_command(TARGET streetrod-enhanced POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/assets/hd
+            $<TARGET_FILE_DIR:streetrod-enhanced>/hd)
+
 # The launcher ("Street Rod Enhanced"): the game folder, the original or the data disk's cars, the
 # game's own switches and the display options; built beside streetrod-enhanced.exe. It needs
 # wxWidgets 3.2 (MSYS2: mingw-w64-x86_64-wxwidgets3.2-msw) and a C++17 compiler.
