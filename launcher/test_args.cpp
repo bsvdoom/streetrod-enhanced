@@ -26,7 +26,7 @@ int main() {
     Check(!Has(GameArguments(o), "--fps"), "default options: no --fps switch");
     Check(!Has(GameArguments(o), "--draw-distance"), "default options: no --draw-distance switch");
     Check(!Has(GameArguments(o), "--hd"), "default options: no --hd switch");
-    Check(!Has(GameArguments(o), "--sky-scroll"), "default options: no --sky-scroll switch");
+    Check(!Has(GameArguments(o), "--fixed-sky-rotation"), "default options: no --fixed-sky-rotation switch");
     o.retry = true;
     Check(Has(GameArguments(o), "--retry"), "retry on: --retry");
     o.demo = true;
@@ -47,8 +47,9 @@ int main() {
           "draw distance 120: --draw-distance 120");
     o2.hd = false;
     Check(Has(GameArguments(o2), "--hd") && Has(GameArguments(o2), "off"), "hd off: --hd off");
-    o2.skyScroll = 100;
-    Check(Has(GameArguments(o2), "--sky-scroll") && Has(GameArguments(o2), "100"), "sky scroll: --sky-scroll 100");
+    o2.fixedSky = false;
+    Check(Has(GameArguments(o2), "--fixed-sky-rotation") && Has(GameArguments(o2), "off"),
+          "sky as the original: --fixed-sky-rotation off");
 
     return failures == 0 ? 0 : 1;
 }

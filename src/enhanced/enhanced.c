@@ -12,7 +12,7 @@
 #include "platform/ega.h"
 
 EnhOptions enh_opt = { false, 1, ENH_DEFAULT_AA, ENH_DEFAULT_MOTION_DELAY, true, ENH_DEFAULT_DRAW_DISTANCE,
-                       ENH_DEFAULT_SKY_SCROLL };
+                       ENH_FIXED_SKY_SCROLL };
 
 /* A smoothly interpolated series of samples: [0] = the newest, [1] and [2] the ones before. */
 #define SER_N 5

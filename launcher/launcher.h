@@ -71,7 +71,7 @@ private:
     wxChoice* aa_ = nullptr;
     wxChoice* drawDistance_ = nullptr;
     wxCheckBox* hd_ = nullptr;
-    wxChoice* skyScroll_ = nullptr;
+    wxCheckBox* fixedSky_ = nullptr;
     wxCheckBox* town_ = nullptr;
     wxButton* play_ = nullptr;
     // The Sounds page: a slider and a number field for each volume.
