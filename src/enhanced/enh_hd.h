@@ -18,15 +18,26 @@ void enh_hd_set_knob_type(int type);
 void enh_hd_set_knob_pos(int x, int y);
 void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1);
 void enh_hd_set_crashed(bool crashed);
-bool enh_hd_is_crashed(void);
+
+/* The dialogs and menus on the game's UI stack, [x0, x1) x [y0, y1) in original pixels: the original's
+ * picture stays inside them over every enhanced layer. */
+typedef struct { int x0, y0, x1, y1; } EnhRect;
+int  enh_hd_dialogs(EnhRect out[4]);
+bool enh_hd_in_rects(const EnhRect *r, int n, int x, int y);
+
+/* 320 x 190 masks, NULL without the HD cockpit: where the HD cockpit is clear (the windshield, the mirror),
+ * and the original cockpit picture's colours. Where the HD cockpit is clear and the shown pixel is still the
+ * original cockpit's, the enhanced view shows through (the HD hood is lower than the original's). */
+const u8 *enh_hd_window(void);
+const u8 *enh_hd_orig_cockpit(void);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */
-void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale);
+/* live: the road view is drawn this frame (the side mirror copies it); otherwise the side mirror keeps the
+ * last copy, as the original only copies it while it draws the road */
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live);
 
-/* Screen backgrounds: garage (0x408), bob (0x445), gas (0x442) */
+/* show_picture: a full-screen picture ends the cockpit */
 void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off);
-bool enh_hd_has_screen(void);
-void enh_hd_compose_screen(u32 *xrgb, int res_scale);
 
 /* Sky and horizon sampling (Section 5.2): fills row j of hd_sky_buf if HD sheets are present */
 void enh_hd_sky_begin(int w, int h, int sa);

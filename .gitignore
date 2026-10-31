@@ -1,6 +1,5 @@
 # Original game files (not redistributable)
-/Game/*
-!/Game/hd/
+/Game/
 
 # Build output and copied binaries
 build*/

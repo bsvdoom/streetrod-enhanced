@@ -13,7 +13,8 @@ Valószínű okok, fontossági sorrendben:
 
 1. **`--fps 165` + `--vsync on` együtt**: explicit korlátnál az időzítős ütemezés és a VSync is vár. A két óra
    nincs fázisban (165,000 Hz vs. a monitor valódi frissítése), a lekésett vblank egész ciklust vár, így 2–3
-   vblankonként lesz új kép (55–80 FPS). Gyors próba: `--fps 0 --vsync on`.
+   vblankonként lesz új kép (55–80 FPS). **Javítva:** VSync mellett a frissítésnél nem kisebb korlát figyelmen
+   kívül marad.
 2. **Soros fő szál**: játéklogika → EGA-felnagyítás (egy szál) → parancsok rögzítése → [párhuzamos raszter +
    resolve] → HD műszerfal (egy szál) → textúra-feltöltés 4 MB (egy szál) → megjelenítés (VSync-várakozás).
    Semmi nem fut átfedésben.
@@ -28,14 +29,16 @@ Lépések:
 
 1. **Mérés**: szakaszonkénti időmérés a fő szálon (játék, EGA, rögzítés, raszter, HD, feltöltés,
    megjelenítés, várakozás), `SR_DEBUG_FPS`-sel kiírva.
-2. **Ütemezés**: VSync mellett a frissítésnél nem kisebb `--fps` korlát figyelmen kívül marad (a VSync ütemez);
-   a várakozás alvással megy, csak a végén pörög. A launcher „Auto” beállítása maradjon az ajánlott.
+2. **Ütemezés**: a korlát-ütközés kész; maradt: a várakozás alvással menjen, csak a végén pörögjön.
 3. **Párhuzamosítás**: EGA-felnagyítás és HD műszerfal (pixelenként független) ugyanazon a szálkészleten,
    sávokra osztva.
 4. **Átfedés**: a következő képkocka összerakása fusson a megjelenítés alatt (kettős puffer vagy render-szál).
 5. **Hosszabb távon**: összerakás GPU-n (EGA-réteg, HD műszerfal, felnagyítás shaderrel); a CPU csak az alacsony
    felbontású rétegeket tölti fel. Maximális res/AA mellett csak így reális a 165 FPS.
 
-## A 2026-10-31-es átvizsgálás javítandói
+## Nyitott tételek az átvizsgálásból
 
-Lásd [AUDIT-2026-10-31.md](AUDIT-2026-10-31.md): ott a hibák és a gyors QoL-javítások listája.
+Lásd [AUDIT-2026-10-31.md](AUDIT-2026-10-31.md):
+- kormány-forgatás HD módban (döntés kell);
+- HD óralap az automata autókhoz, a sötét ellipszis a `cockpit.png`-ben (képfeladatok);
+- a `Game/hd` képek kitisztítása a helyi git-historyból push előtt (döntés kell).

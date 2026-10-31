@@ -68,7 +68,6 @@ void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town, 
     enh_opt.motion_delay = SDL_clamp(motion_delay, 0, 100);
     enh_opt.town = town;
     enh_opt.draw_distance = SDL_clamp(draw_distance, ENH_MIN_DRAW_DISTANCE, ENH_MAX_DRAW_DISTANCE);
-    enh_hd_init(enabled);
     if (enabled) enh_raster_init();
     const char *t = SDL_getenv("SR_ENH_TRACE");
     if (enabled && t && *t && (trace = fopen(t, "w")) != NULL) setvbuf(trace, NULL, _IOLBF, 4096);
@@ -227,7 +226,7 @@ bool enh_compose(u32 *xrgb, const u32 rgb[16])
     int y_end = SDL_min(ENH_VIEW_Y1, ega_line_compare());
     enh_raster_dispatch_and_resolve(xrgb, rgb, 16, shown_start, y_end);
     Uint64 t2 = SDL_GetTicksNS();
-    enh_hd_compose(xrgb, rgb, enh_opt.res_scale);
+    enh_hd_compose(xrgb, rgb, enh_opt.res_scale, true);
     Uint64 t3 = SDL_GetTicksNS();
     if (trace) {
         static double last_pos;

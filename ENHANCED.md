@@ -14,13 +14,18 @@ comes along with it: at 8 frames a second, a high-resolution picture only makes 
 * Done: the scaled output frame and the coverage (§2), smooth motion, the road, sky and horizon, the road-side
   objects, signs, banners, town walls, the opponent and the police car, the rear-view mirror, the town cruise,
   the options and the launcher's Picture box.
-* **Longer draw distance (stage 2)**: extended to 60, 120, and 240 segments (up from the original 15), with
-  smooth horizon projection and LOD for far scenery.
-* **Multithreaded rasterizer**: software command queue with worker thread pool across all CPU cores for
-  per-row/per-band rasterization and anti-aliasing resolve, enabling 165+ FPS performance on modern displays.
-* **High-definition cockpit (HD)**: detailed high-resolution dashboard and cockpit graphics, dynamic needles
-  and shifter knobs with bilinear precomputed mapping tables.
-* **Frame pacing & VSync**: display refresh rate detection, adaptive VSync presentation, and `--fps` control.
+* **Longer draw distance (stage 2)**: `--draw-distance` 15..120 segments (default 60; the original draws 15).
+  Far road-side shapes step down through the original's smaller sizes (mip levels) and keep at least one
+  sample per line, so they do not flicker; slices beyond a crest are culled and the ground in front hides what
+  lies behind it.
+* **Multithreaded rasterizer**: a command list recorded per frame, executed and resolved in horizontal bands
+  on a worker per logical core (`enh_raster.c`). The serial parts (compositing, upload, present) still limit
+  the frame rate: see `docs/TODO.md`.
+* **High-definition cockpit (HD)**: high-resolution cockpit, vector needles and shifter knobs, sampled
+  nearest-texel through per-frame mapping tables (`enh_hd.c`). The pictures (`Game/hd/*.png`) are made from
+  the game's own and are not distributed with the source.
+* **Frame pacing & VSync**: with VSync the present paces the frames; `--fps` caps them (with VSync only below
+  the refresh rate).
 * Still the original's picture, laid over the enhanced view: the drag race's start light, the messages,
   and crash / damage overlays (crash freeze frame preservation planned).
 * Changes from the plan below, made while testing:
@@ -37,8 +42,7 @@ comes along with it: at 8 frames a second, a high-resolution picture only makes 
     depth; signs use the largest pre-scaled picture; the cars their native pictures, scaled to fit the
     original's shrunk views (at most 1.3 times the native size).
   * **Mirror objects** stand at their true segment (the original draws them one segment off).
-* Not done yet: rendering on worker threads (about 8.5 ms a frame at 1280 × 800, 2 × 2, on one core), mip
-  levels for far sprites, the developer aids of §5 beyond `SR_ENH_TRACE`.
+* Not done yet: the developer aids of §5 beyond `SR_ENH_TRACE`.
 
 References:
 
@@ -205,8 +209,9 @@ The road ahead exists in the table, so the geometry comes almost for free. The w
     overlay during `crash_show()`, instead of dropping back to the original 15-segment EGA framebuffer when
     `enh_race_end()` is called.
 11. **Multithreaded worker pool & rasterizer:** Vertical sample buffer and linear-light resolve partitioned into
-    disjoint horizontal row bands across all logical CPU cores via SDL3 worker pool (`enh_raster.c`). Eliminates
-    rasterization bottlenecks, hitting 135–400+ FPS (well above 165Hz target).
+    disjoint horizontal row bands across all logical CPU cores via SDL3 worker pool (`enh_raster.c`). Measured
+    headless (12 cores, 1280×800, 2×2, draw distance 120): about 6 ms to compose a frame; the serial parts
+    limit the frame rate (`docs/TODO.md`).
 
 **Stage 2 acceptance:**
 

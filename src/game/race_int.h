@@ -150,6 +150,7 @@ u16  race_logic(void);                       /* 0000:8ea8 */
 /* ============================================================================ race_results.c */
 u16  race_results(void);                     /* 0000:c613 */
 void race_msg(void);                         /* 0000:c497 */
+void crash_show(void);                       /* 0000:c1d8 (public for the SR_DEBUG_RACE=crash aid) */
 s16  tires_replace(void);                    /* 0000:bed4 */
 
 /* ============================================================================ race_bob.c */

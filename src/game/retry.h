@@ -8,7 +8,6 @@
 void retry_set_options(bool on, int slot);     /* main.c: slot clamped to 1..16; forced off in demo mode */
 bool retry_enabled(void);
 int  retry_slot(void);
-bool retry_is_dialog_active(void);
 
 void retry_before_race(void);                  /* the silent save into the slot (logs, remembers success) */
 

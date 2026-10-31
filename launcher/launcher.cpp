@@ -52,7 +52,7 @@ const int MAX_AA = 4, DEFAULT_AA = 2;                    // --aa (1 = off)
 const int FPS_VALUES[] = { -1, 60, 120, 144, 165, 240, 0 };
 const int NUM_FPS_VALUES = sizeof(FPS_VALUES) / sizeof(FPS_VALUES[0]);
 
-const int DRAW_DISTANCES[] = { 15, 60, 120, 240 };
+const int DRAW_DISTANCES[] = { 15, 60, 120 };            // --draw-distance (the game allows 15..120)
 const int NUM_DRAW_DISTANCES = sizeof(DRAW_DISTANCES) / sizeof(DRAW_DISTANCES[0]);
 const int DEFAULT_DRAW_DISTANCE = 60;
 
@@ -171,10 +171,9 @@ LauncherFrame::LauncherFrame()
         wxMax(MIN_RES, wxMin(MAX_RES, settings::GetInt(SECTION, "ResScale", DEFAULT_RES))) - MIN_RES);
     aa_->SetSelection(wxMax(1, wxMin(MAX_AA, settings::GetInt(SECTION, "AA", DEFAULT_AA))) - 1);
     int savedDist = settings::GetInt(SECTION, "DrawDistance", DEFAULT_DRAW_DISTANCE);
-    int distSel = 1; // 60
-    for (int i = 0; i < NUM_DRAW_DISTANCES; ++i) {
-        if (DRAW_DISTANCES[i] == savedDist) { distSel = i; break; }
-    }
+    int distSel = 0;                                  // the largest not above the saved one (240 -> 120)
+    for (int i = 0; i < NUM_DRAW_DISTANCES; ++i)
+        if (DRAW_DISTANCES[i] <= savedDist) distSel = i;
     drawDistance_->SetSelection(distSel);
     hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
@@ -342,8 +341,7 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     drawDistance_ = new wxChoice(pb, wxID_ANY);
     drawDistance_->Append("15 segments: original DOS Street Rod");
     drawDistance_->Append("60 segments: 4x distance (default)");
-    drawDistance_->Append("120 segments: 8x distance");
-    drawDistance_->Append("240 segments: 16x distance (maximum)");
+    drawDistance_->Append("120 segments: 8x distance (maximum)");
     drawDistance_->SetToolTip("How far down the road is drawn in races. Higher values let you see turns and opponents earlier.");
     pgrid->Add(drawDistance_, 0, wxALIGN_CENTER_VERTICAL);
     pictureBox->Add(pgrid, 0, wxLEFT | wxRIGHT | wxTOP, gap);

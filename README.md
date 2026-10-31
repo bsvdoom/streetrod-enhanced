@@ -7,8 +7,8 @@ not included; the game is free from the copyright owner: https://www.streetrodon
 
 * Smooth road view in races and drives through town, at your display's refresh rate (120, 144, 165, 240 Hz).
 * High resolution (up to 2560 × 1600) with anti-aliasing and a multithreaded software rasterizer across CPU cores.
-* Extended road draw distance in races (up to 240 segments, 16× original view distance).
-* High-definition (HD) cockpit, instruments, gauges, and car interior graphics.
+* Extended road draw distance in races (up to 120 segments, 8× the original's).
+* High-definition (HD) cockpit, instruments and gauges, when its pictures are in `Game/hd` (not included).
 * Target frame rate control (`--fps`) and vertical synchronisation (`--vsync`).
 * Separate music and sound effects volumes.
 * The game is otherwise the original: garage, opponents, physics, police and screens.
@@ -118,9 +118,9 @@ Tests of the Retry option (headless, on a copy of `Game/`): `tests/retry/t*.sh`.
 | `--fullscreen` | Start in full screen |
 | `--res-scale N` | Resolution, × 320×200 (default 4, 2–8) |
 | `--aa N` | Anti-aliasing, N×N samples (default 2, 1 = off) |
-| `--draw-distance N` | Road draw distance in races (default 60; 15 = original DOS, 120 = double, 240 = max) |
-| `--hd on\|off` | High-definition cockpit, needles, and dashboard graphics (default on) |
-| `--fps N` | Target frame rate (default -1 = auto-detect screen refresh rate, 0 = uncapped) |
+| `--draw-distance N` | Road draw distance in races, segments (default 60, 15–120; the original's is 15) |
+| `--hd on\|off` | High-definition cockpit, needles and dashboard, pictures from `Game/hd` (default on) |
+| `--fps N` | Frame rate cap (default auto: the display's refresh; 0 = uncapped; with VSync only a cap below the refresh counts) |
 | `--vsync on\|off` | Wait for vertical sync (default on) |
 | `--motion-delay P` | Smooth view delay, % of a game frame (default 100) |
 | `--town on\|off` | Enhanced drives through town (default on) |

@@ -87,7 +87,6 @@ bool race_debug_main(void)
         retry_debug_race_before();
         race_start();
         PHS(PLAYER, PH_SPEED) = 0x65; /* > 90 mph for glass cracks */
-        void crash_show(void);
         crash_show();
     } else {
         DSW(DS_drive_dest) = 2;

@@ -68,36 +68,30 @@ void host_set_vsync(bool vsync)
     }
 }
 
+/* The display's refresh rate in Hz, 0 when unknown. */
+static float display_refresh(void)
+{
+    if (!window) return 0;
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+    return mode && mode->refresh_rate >= 30.0f ? mode->refresh_rate : 0;
+}
+
+/* frame_interval_ns: 0 = every frame is presented (with VSync the present waits for the display, without
+ * it uncapped); otherwise presents are due on that grid. A timer on top of VSync makes presents miss their
+ * vblank (half or a third of the rate), so with VSync a cap at or above the refresh rate is left to the
+ * VSync; automatic without VSync is the refresh rate. */
 static void update_display_refresh(void)
 {
     if (display_rate_checked) return;
     display_rate_checked = true;
 
-    if (opt_fps >= 0) {
-        if (opt_fps > 0) frame_interval_ns = SDL_NS_PER_SECOND / (Uint64)opt_fps;
-        else frame_interval_ns = 0; /* 0 = uncapped */
-        return;
-    }
+    int fps = opt_fps;                                  /* -1 = automatic, 0 = uncapped */
     const char *fps_env = SDL_getenv("SR_FPS");
-    if (fps_env) {
-        int custom_fps = SDL_atoi(fps_env);
-        if (custom_fps > 0) frame_interval_ns = SDL_NS_PER_SECOND / (Uint64)custom_fps;
-        else frame_interval_ns = 0;
-        return;
-    }
-    /* Automatic: with VSync the presentation itself waits for the display's refresh, a timer on top of it
-     * only makes presents miss their vblank (half or a third of the rate); without VSync, the refresh
-     * rate paces them. */
-    frame_interval_ns = 0;
-    if (!opt_vsync && window) {
-        SDL_DisplayID id = SDL_GetDisplayForWindow(window);
-        const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(id);
-        if (mode && mode->refresh_rate >= 30.0f) {
-            frame_interval_ns = (Uint64)(SDL_NS_PER_SECOND / mode->refresh_rate);
-        } else {
-            frame_interval_ns = SDL_NS_PER_SECOND / 165;
-        }
-    }
+    if (fps < 0 && fps_env) fps = SDL_max(SDL_atoi(fps_env), 0);
+    float hz = display_refresh();
+    if (fps < 0) fps = opt_vsync ? 0 : (hz > 0 ? (int)(hz + 0.5f) : 165);
+    if (fps > 0 && opt_vsync && hz > 0 && fps >= hz - 1.0f) fps = 0;
+    frame_interval_ns = fps > 0 ? SDL_NS_PER_SECOND / (Uint64)fps : 0;
 }
 
 bool host_init(const char *dir, int window_scale, bool fullscreen)

@@ -50,13 +50,7 @@ static bool compose(u32 *xrgb)
         for (int j = 1; j < scale; j++) memcpy(first + (size_t)j * w, first, sizeof(u32) * (size_t)w);
     }
     enh_shown = enh_compose(xrgb, rgb);     /* ENH: the enhanced view over the picture */
-    if (!enh_shown) {
-        if (enh_hd_has_cockpit()) {
-            enh_hd_compose(xrgb, rgb, scale);
-        } else if (enh_hd_has_screen()) {
-            enh_hd_compose_screen(xrgb, scale);
-        }
-    }
+    if (!enh_shown && enh_hd_has_cockpit()) enh_hd_compose(xrgb, rgb, scale, false);   /* ENH: HD cockpit */
     return true;
 }
 

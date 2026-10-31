@@ -81,6 +81,9 @@ typedef struct {
     int npal;
     u16 page;
     int y_end;
+    EnhRect dlg[4];                /* the dialogs on the UI stack: the original's picture stays there */
+    int ndlg;
+    const u8 *window, *cockpit;    /* enh_hd_window / enh_hd_orig_cockpit, NULL without the HD cockpit */
     float lr[256], lg[256], lb[256];
 } FrameContext;
 
@@ -462,11 +465,17 @@ static void resolve_band(int y_from, int y_to)
             for (int x = 0; x < 320; x++) {
                 u16 o = (u16)(row + (x >> 3));
                 u8 bit = (u8)(0x80 >> (x & 7));
-                bool in_top_mirror = (x >= 240 && x < 320 && y >= 20 && y <= 45);
-                if (in_top_mirror) {
-                    if (enh_hd_is_crashed() && ((wr[o] | fg[o]) & bit)) continue;
-                } else {
-                    if ((wr[o] | fg[o]) & bit) continue;                /* the original's pixel */
+                /* the original's pixel; in the mirror box (the original's mirror is replaced) only under a
+                 * dialog */
+                if ((wr[o] | fg[o]) & bit) {
+                    bool in_mirror = x >= 240 && y >= 20 && y <= 45;
+                    bool through = false;          /* the static cockpit where the HD cockpit is clear */
+                    if (frame_ctx.window && y < 190 && frame_ctx.window[y * 320 + x]) {
+                        int c = (ega_plane(0)[o] & bit ? 1 : 0) | (ega_plane(1)[o] & bit ? 2 : 0) |
+                                (ega_plane(2)[o] & bit ? 4 : 0) | (ega_plane(3)[o] & bit ? 8 : 0);
+                        through = c == frame_ctx.cockpit[y * 320 + x];
+                    }
+                    if (enh_hd_in_rects(frame_ctx.dlg, frame_ctx.ndlg, x, y) || (!in_mirror && !through)) continue;
                 }
                 for (int ox = 0; ox < S; ox++) {
                     int X = x * S + ox;
@@ -603,6 +612,11 @@ void enh_raster_shutdown(void)
 void enh_raster_dispatch_and_resolve(u32 *xrgb, const u32 *pal, int npal, u16 page, int y_end)
 {
     tables();
+    static bool warned;
+    if (cmd_count >= MAX_CMDS && !warned) {
+        warned = true;
+        fprintf(stderr, "enhanced view: more than %d drawing commands in a frame, the rest is dropped\n", MAX_CMDS);
+    }
 
     for (int i = 0; i < npal && i < 256; i++) {
         frame_ctx.lr[i] = to_lin[(pal[i] >> 16) & 0xFF];
@@ -614,6 +628,9 @@ void enh_raster_dispatch_and_resolve(u32 *xrgb, const u32 *pal, int npal, u16 pa
     frame_ctx.npal = npal;
     frame_ctx.page = page;
     frame_ctx.y_end = y_end;
+    frame_ctx.ndlg = enh_hd_dialogs(frame_ctx.dlg);
+    frame_ctx.window = enh_hd_window();
+    frame_ctx.cockpit = enh_hd_orig_cockpit();
 
     for (int i = 1; i < num_workers; i++) {
         SDL_SignalSemaphore(sem_start[i]);

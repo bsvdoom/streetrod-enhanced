@@ -7,7 +7,6 @@
 #include "platform/ega.h"
 #include "platform/video.h"
 #include "game/ui.h"
-#include "game/retry.h"
 
 #ifndef DS_ptr_bank
 #define DS_ptr_bank       0x7AFC
@@ -52,6 +51,7 @@ static ImageHD img_crash;
 
 static bool hd_cockpit_active = false;
 static bool hd_crashed = false;
+static bool hd_clock = false;           /* an automatic car: the clock instead of the tachometer */
 static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
 static bool hd_knob_active = false;
@@ -73,14 +73,10 @@ void enh_hd_set_crashed(bool crashed)
     hd_crashed = crashed;
 }
 
-bool enh_hd_is_crashed(void)
-{
-    return hd_crashed;
-}
-
 /* Clean original cockpit palette indices (320x190) from the game's descriptors */
 static u8 orig_cockpit[190][320];
 static bool has_orig_cockpit = false;
+static u8 hd_window[190][320];                 /* 1: the HD cockpit is (partly) clear here */
 
 /* Rear-view mirror cutout cache to retain scenic view when dialog covers top mirror */
 static u32 mirror_cache[32 * 8 * 19 * 8];
@@ -289,11 +285,7 @@ static void load_asset(const char *name, ImageHD *out)
         SDL_snprintf(path, sizeof path, "hd/%s.bmp", name);
         out->pixels = load_image(path, &out->w, &out->h);
     }
-    if (out->pixels) {
-        fprintf(stderr, "HD loaded: %s (%dx%d)\n", name, out->w, out->h);
-    } else {
-        fprintf(stderr, "HD notice: %s not found (vanilla graphics used)\n", name);
-    }
+    if (!out->pixels) fprintf(stderr, "HD notice: %s not found (vanilla graphics used)\n", name);
 }
 
 void enh_hd_init(bool enabled)
@@ -316,22 +308,33 @@ static void ensure_loaded(void)
     load_asset("knob_3speed", &img_knob[1]);
     load_asset("knob_4speed", &img_knob[2]);
     load_asset("crash", &img_crash);
+    if (img_cockpit.pixels) {                  /* the see-through pixels: any part of their block clear */
+        int cw = img_cockpit.w, ch = img_cockpit.h;
+        for (int y = 0; y < 190; y++)
+            for (int x = 0; x < 320; x++) {
+                bool clear = false;
+                for (int hy = y * ch / 190; hy < (y + 1) * ch / 190 && !clear; hy++)
+                    for (int hx = x * cw / 320; hx < (x + 1) * cw / 320 && !clear; hx++)
+                        clear = (img_cockpit.pixels[(size_t)hy * cw + hx] >> 24) == 0;
+                hd_window[y][x] = clear;
+            }
+    }
+}
+
+const u8 *enh_hd_window(void)
+{
+    return enh_hd_has_cockpit() ? &hd_window[0][0] : NULL;
+}
+
+const u8 *enh_hd_orig_cockpit(void)
+{
+    return &orig_cockpit[0][0];
 }
 
 void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off)
 {
     enh_hd_clear_cockpit();
     (void)id; (void)seg; (void)off;
-}
-
-bool enh_hd_has_screen(void)
-{
-    return false;
-}
-
-void enh_hd_compose_screen(u32 *xrgb, int res_scale)
-{
-    (void)xrgb; (void)res_scale;
 }
 
 bool enh_hd_enabled(void)
@@ -345,6 +348,9 @@ void enh_hd_set_cockpit(u16 seg, u16 off)
     ensure_loaded();
     hd_cockpit_active = true;
     hd_crashed = false;
+    hd_clock = false;
+    hd_knob_active = false;
+    hd_needles[0].active = hd_needles[1].active = false;
     FarPtr d = { off, seg };
     if (far_is_null(d)) return;
     int w = desc_w(d), h = desc_h(d), stride = desc_stride(d);
@@ -363,7 +369,8 @@ void enh_hd_set_cockpit(u16 seg, u16 off)
     has_orig_cockpit = true;
 }
 
-void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy)
+/* a picture blitted into the cockpit picture: into the copy of its colours as well */
+static void blit_into_cockpit(u16 seg, u16 off, int dx, int dy)
 {
     if (!has_orig_cockpit) return;
     FarPtr d = { off, seg };
@@ -384,9 +391,17 @@ void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy)
     }
 }
 
+/* The clock face of automatic cars sits where the tachometer is: there the original's clock stays (the HD
+ * picture has a tachometer, and these cars have no tachometer needle). */
+void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy)
+{
+    blit_into_cockpit(seg, off, dx, dy);
+    hd_clock = true;
+}
+
 void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy)
 {
-    enh_hd_set_clock(seg, off, dx, dy);
+    blit_into_cockpit(seg, off, dx, dy);
 }
 
 static void enh_hd_draw_cursor(u32 *xrgb, const u32 rgb[16], int res_scale)
@@ -441,7 +456,42 @@ static void enh_hd_draw_cursor(u32 *xrgb, const u32 rgb[16], int res_scale)
     }
 }
 
-void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
+#define UI_DEPTH 0x8B8E                /* ui.h: the UI stack's depth (max 4) and its screens */
+#define UI_STACK 0x8B86
+
+/* ui_bounds (ui_menu.c) without its writes to DGROUP: the rectangles [x0, x1) x [y0, y1) of the screens on
+ * the UI stack that have records (the dialogs and menus); the screens without (the "click anywhere" waits)
+ * cover nothing. Inside them the original's picture stays over every enhanced layer. */
+int enh_hd_dialogs(EnhRect out[4])
+{
+    int n = 0, depth = DSS(UI_DEPTH);
+    for (int d = 0; d < depth && d < 4; d++) {
+        u16 rec = ui_screen_rec(DSS((u16)(UI_STACK + 2 * d)));
+        int x0 = 1000, y0 = 1000, x1 = 1, y1 = 1;
+        for (int guard = 0; DSW((u16)(rec + UI_R_NEXT)) != 0 && guard < 256; guard++) {
+            rec = UI_REC(DSW((u16)(rec + UI_R_NEXT)));
+            x0 = SDL_min(x0, DSS((u16)(rec + UI_R_X0)));
+            x1 = SDL_max(x1, DSS((u16)(rec + UI_R_X1)));
+            y0 = SDL_min(y0, DSS((u16)(rec + UI_R_Y0)));
+            y1 = SDL_max(y1, DSS((u16)(rec + UI_R_Y1)));
+        }
+        x0 = SDL_max(x0 - 3, 0);
+        y0 = SDL_max(y0 - 3, 0);
+        x1 = SDL_min(x1 + 3, 320);
+        y1 = SDL_min(y1 + 3, 200);
+        if (x1 > x0 && y1 > y0) out[n++] = (EnhRect){ x0, y0, x1, y1 };
+    }
+    return n;
+}
+
+bool enh_hd_in_rects(const EnhRect *r, int n, int x, int y)
+{
+    for (int i = 0; i < n; i++)
+        if (x >= r[i].x0 && x < r[i].x1 && y >= r[i].y0 && y < r[i].y1) return true;
+    return false;
+}
+
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
 {
     ensure_loaded();
     if (!hd_opt_enabled || !img_cockpit.pixels || !has_orig_cockpit) return;
@@ -466,29 +516,17 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
     int c7_g = (int)((c7_raw >> 8) & 0xFF);
     int c7_b = (int)(c7_raw & 0xFF);
 
-    /* Check if Dialog 1 (top green crash results or message box) is active */
-    bool top_dialog_active = false;
-    if (hd_crashed) {
-        s16 top_d_depth = DSS(0x8B8E);
-        if (top_d_depth > 0 && top_d_depth <= 4) {
-            for (int d = 0; d < top_d_depth; d++) {
-                s16 scr = DSS((u16)(0x8B86 + 2 * d));
-                if (scr == 0x18 || scr == 0x19 || scr == 0x1A) {
-                    top_dialog_active = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    /* Top rear-view mirror cutout is covered only if an actual dialog covers it */
-    bool top_mirror_covered = top_dialog_active;
+    EnhRect dlg[4];
+    int ndlg = enh_hd_dialogs(dlg);
+    bool top_mirror_covered = false;           /* a dialog over the part of the mirror the side mirror shows */
+    for (int i = 0; i < ndlg; i++)
+        if (dlg[i].x0 < 280 && dlg[i].x1 > 248 && dlg[i].y0 < 41 && dlg[i].y1 > 22) top_mirror_covered = true;
 
     /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
     int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
     int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
     int mw  = 32 * res_scale,  mh  = 19 * res_scale;
-    if (!top_mirror_covered) {
+    if (live && !top_mirror_covered) {
         if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
             for (int y = 0; y < mh; y++) {
                 memcpy(mirror_cache + y * mw,
@@ -520,7 +558,6 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
         int hy = (Y * ch) / (190 * res_scale);
         hy_of[Y] = hy < ch ? hy : ch - 1;
     }
-    bool retry_dialog = retry_is_dialog_active();
 
     for (int y = 0; y < 190; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
@@ -545,14 +582,13 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             bool in_side_mirror = (x >= 8 && x < 40 && y >= 103 && y < 122);
             int dtx = x - 145, dty = y - 142;
             int dsx = x - 196, dsy = y - 142;
-            bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
+            bool in_tach = dtx * dtx + dty * dty <= 27 * 27;
+            if (in_tach && hd_clock) continue;                    /* the original's clock */
+            bool in_dial = in_tach || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
             bool in_hood = (x >= 50 && y >= 70);
-            bool in_d1 = top_dialog_active && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
-            bool in_d2 = (x >= 58 && x <= 258 && y >= 70 && y <= 120)
-                         && (retry_dialog || (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8));
-            if (in_d1 || in_d2) continue;
+            if (enh_hd_in_rects(dlg, ndlg, x, y)) continue;    /* a dialog: the original's picture */
             if (ega_c != orig_c && !in_hood && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
             bool hood = x >= hood_min_x;
@@ -700,49 +736,6 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 
     /* Render HD cracked windshield overlay on crash */
     if (hd_crashed && img_crash.pixels != NULL) {
-        /* Collect all active UI dialog bounding boxes to ensure NO cracks render over any dialog */
-        typedef struct { int x0, y0, x1, y1; } UIRect;
-        UIRect ui_boxes[8];
-        int num_boxes = 0;
-
-        s16 ui_depth = DSS(0x8B8E);
-        if (ui_depth > 0 && ui_depth <= 4) {
-            for (int d = 0; d < ui_depth && num_boxes < 8; d++) {
-                s16 scr = DSS((u16)(0x8B86 + 2 * d));
-                if (scr >= 0 && scr < 0x30) {
-                    s16 bx, by, bw, bh;
-                    ui_bounds(scr, &bx, &by, &bw, &bh);
-                    if (bw > 0 && bh > 0) {
-                        ui_boxes[num_boxes].x0 = bx >= 0 ? bx : 0;
-                        ui_boxes[num_boxes].y0 = by >= 0 ? by : 0;
-                        ui_boxes[num_boxes].x1 = bx + bw <= 320 ? bx + bw : 320;
-                        ui_boxes[num_boxes].y1 = by + bh <= 200 ? by + bh : 200;
-                        num_boxes++;
-                    }
-                }
-            }
-        }
-
-        /* Safety bounds for crash dialog (menu 0x19/0x1A: x ~ 37..288, y ~ 7..53)
-         * and retry dialog (x ~ 58..258, y ~ 70..120) */
-        if (num_boxes < 8 && top_dialog_active) {
-            ui_boxes[num_boxes++] = (UIRect){ 37, 7, 288, 53 };
-        }
-        /* Check if retry dialog is active (center white popup at x ~ 58..258, y ~ 70..120) */
-        if (num_boxes < 8) {
-            u16 r_row = 72 < line_compare ? (u16)(start_addr + 72 * EGA_BYTES_PER_LINE)
-                                           : (u16)((72 - line_compare) * EGA_BYTES_PER_LINE);
-            u16 r_o = (u16)(r_row + (100 >> 3));
-            int r_bit = 7 - (100 & 7);
-            int r_c = ((p0[r_o] >> r_bit & 1)     ) |
-                      ((p1[r_o] >> r_bit & 1) << 1) |
-                      ((p2[r_o] >> r_bit & 1) << 2) |
-                      ((p3[r_o] >> r_bit & 1) << 3);
-            if (r_c == 15) { /* White background of retry dialog */
-                ui_boxes[num_boxes++] = (UIRect){ 58, 70, 258, 120 };
-            }
-        }
-
         int cw2 = img_crash.w, ch2 = img_crash.h;
         for (int Y = 0; Y < 190 * res_scale; Y++) {
             int y = Y / res_scale;
@@ -754,22 +747,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             for (int X = 0; X < W; X++) {
                 int x = X / res_scale;
 
-                /* Never draw cracks over Dialog 1 (crash results) or Dialog 2 (retry offer) */
-                bool in_d1 = top_dialog_active && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
-                bool in_d2 = (retry_is_dialog_active() || (x >= 58 && x <= 258 && y >= 70 && y <= 120))
-                             && (x >= 58 && x <= 258 && y >= 70 && y <= 120);
-                if (in_d1 || in_d2) continue;
-
-                /* Never draw cracks over any other active dialog box */
-                bool in_dialog = false;
-                for (int b = 0; b < num_boxes; b++) {
-                    if (x >= ui_boxes[b].x0 && x <= ui_boxes[b].x1 &&
-                        y >= ui_boxes[b].y0 && y <= ui_boxes[b].y1) {
-                        in_dialog = true;
-                        break;
-                    }
-                }
-                if (in_dialog) continue;
+                if (enh_hd_in_rects(dlg, ndlg, x, y)) continue;   /* never over a dialog */
 
                 int cx = (X * cw2) / W;
                 if (cx >= cw2) cx = cw2 - 1;
@@ -795,6 +773,12 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 void enh_hd_sky_begin(int w, int h, int sa)
 {
     ensure_loaded();
+    if (!enh_hd_has_sky()) {                   /* nothing to sample: no buffer, the spans skip it */
+        SDL_free(hd_sky_buf);
+        hd_sky_buf = NULL;
+        hd_sky_w = hd_sky_h = 0;
+        return;
+    }
     if (hd_sky_w != w || hd_sky_h != h) {
         SDL_free(hd_sky_buf);
         hd_sky_buf = SDL_malloc((size_t)w * (size_t)h * sizeof(u32));

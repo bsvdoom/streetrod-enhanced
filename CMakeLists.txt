@@ -48,20 +48,6 @@ if(WIN32)
     endif()
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Game")
-    add_custom_command(TARGET streetrod-enhanced POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/Game
-                $<TARGET_FILE_DIR:streetrod-enhanced>/Game)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Game/hd")
-    add_custom_command(TARGET streetrod-enhanced POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/Game/hd
-                $<TARGET_FILE_DIR:streetrod-enhanced>/hd)
-endif()
-
 # The launcher ("Street Rod Enhanced"): the game folder, the original or the data disk's cars, the
 # game's own switches and the display options; built beside streetrod-enhanced.exe. It needs
 # wxWidgets 3.2 (MSYS2: mingw-w64-x86_64-wxwidgets3.2-msw) and a C++17 compiler.
