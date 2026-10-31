@@ -49,7 +49,14 @@ GameFolder ReadGameFolder(const wxString& dir) {
 
 wxString LauncherDir() { return wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(); }
 
-wxString DefaultGameDir() { return wxFileName(LauncherDir(), "Game").GetFullPath(); }
+wxString DefaultGameDir() {
+    wxString dir = wxFileName(LauncherDir(), "Game").GetFullPath();
+    if (wxFileName::DirExists(dir)) return dir;
+    wxFileName parent(LauncherDir());
+    wxString pdir = wxFileName(parent.GetPath(), "Game").GetFullPath();
+    if (wxFileName::DirExists(pdir)) return pdir;
+    return dir;
+}
 
 wxString DefaultProgram() {
     wxFileName name(LauncherDir(), "streetrod-enhanced");
@@ -75,11 +82,17 @@ std::vector<wxString> GameArguments(const GameOptions& o) {
                                "--game-dir", o.gameDir,
                                "--scale", wxString::Format("%d", o.scale)};
     if (o.fullscreen) args.push_back("--fullscreen");
+    if (!o.vsync) args.insert(args.end(), {"--vsync", "off"});
+    if (o.fps >= 0) args.insert(args.end(), {"--fps", wxString::Format("%d", o.fps)});
     if (o.classic) {
         args.push_back("--classic");
     } else {
         args.insert(args.end(), {"--res-scale", wxString::Format("%d", o.resScale),
                                  "--aa", wxString::Format("%d", o.aa), "--town", o.town ? "on" : "off"});
+        if (o.drawDistance != 60)
+            args.insert(args.end(), {"--draw-distance", wxString::Format("%d", o.drawDistance)});
+        if (!o.hd)
+            args.insert(args.end(), {"--hd", "off"});
     }
     // The volumes only when turned down, so the default command line stays as it was.
     if (o.sounds.music != 100) args.insert(args.end(), {"--music-volume", wxString::Format("%d", o.sounds.music)});

@@ -33,7 +33,9 @@ done
 pass "Windows launcher: $(basename "$le") + $(ls "$WIN" | grep -ic '^wx.*\.dll') wx DLLs"
 
 # 3. Wine: it starts and shows its window
-export WINEDEBUG=-all WINEPREFIX="$TESTS/wineprefix"
+# prefix outside the workspace: its z: -> / link makes IDE indexers loop
+export WINEDEBUG=-all WINEPREFIX="${SR_WINEPREFIX:-${XDG_CACHE_HOME:-$HOME/.cache}/streetrod-enhanced/wineprefix}"
+mkdir -p "$(dirname "$WINEPREFIX")"
 mkdir -p "$TESTS"
 command -v xvfb-run >/dev/null && XV="xvfb-run -a -s '-screen 0 1280x900x24'" || XV=""
 set +e

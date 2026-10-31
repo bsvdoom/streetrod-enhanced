@@ -26,6 +26,8 @@ uint64_t host_tick_time_ns(void);
 #define HOST_FRAME_MAX_W (320 * 8)
 #define HOST_FRAME_MAX_H (200 * 8)
 void host_set_frame_source(bool (*compose)(u32 *xrgb), int w, int h);
+void host_set_fps(int fps);
+void host_set_vsync(bool vsync);
 
 /* Runs due timer ticks (and their audio), handles window events and presents the screen when it
  * changed. Every busy-wait loop of the original (tick waits, key polls, delays) must call this.
@@ -105,6 +107,7 @@ void host_audio_dump_end(void);
 /* ---- Game files: case-insensitive lookup inside the game directory. Returns a malloc'd path (free with
  * host_free) or NULL if the file does not exist. For new files (saved games) pass create = true. */
 char *host_game_path(const char *name, bool create);
+const char *host_game_dir(void);
 void  host_free(void *p);
 
 /* ---- Errors: shows a message box, shuts down and exits with code 3. */

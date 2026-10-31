@@ -64,9 +64,13 @@ private:
     wxCheckBox* retry_ = nullptr;       // --retry (not in the original)
     wxChoice* scale_ = nullptr;
     wxCheckBox* fullscreen_ = nullptr;
+    wxChoice* fps_ = nullptr;
+    wxCheckBox* vsync_ = nullptr;
     wxChoice* graphics_ = nullptr;   // enhanced / original
     wxChoice* resolution_ = nullptr;
     wxChoice* aa_ = nullptr;
+    wxChoice* drawDistance_ = nullptr;
+    wxCheckBox* hd_ = nullptr;
     wxCheckBox* town_ = nullptr;
     wxButton* play_ = nullptr;
     // The Sounds page: a slider and a number field for each volume.

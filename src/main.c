@@ -39,7 +39,7 @@ static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] "
                     "[--music-volume N] [--sfx-volume N] [--retry] [--retry-slot N] "
-                    "[--town on|off] [--hd on|off] "
+                    "[--town on|off] [--hd on|off] [--draw-distance N] [--fps N] [--vsync on|off] "
                     "[1] [nomouse] [demo] [auto] [nouemem]\n", prog);
     return 2;
 }
@@ -73,6 +73,9 @@ int main(int argc, char **argv)
     bool classic = false, town = true, hd = true;
     int music_volume = 100, sfx_volume = 100;
     int res_scale = -1, aa = ENH_DEFAULT_AA, motion_delay = ENH_DEFAULT_MOTION_DELAY;
+    int draw_distance = ENH_DEFAULT_DRAW_DISTANCE;
+    int target_fps = -1;
+    bool vsync = true;
     bool retry = false;
     int retry_slot_n = 16;
     char *game_argv[MAX_GAME_ARGS + 1] = { argv[0] };
@@ -91,6 +94,9 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--motion-delay") && v) { motion_delay = atoi(v); i++; }
         else if (!strcmp(a, "--town") && v) { town = strcmp(v, "off") != 0; i++; }
         else if (!strcmp(a, "--hd") && v) { hd = strcmp(v, "off") != 0; i++; }
+        else if (!strcmp(a, "--draw-distance") && v) { draw_distance = atoi(v); i++; }
+        else if (!strcmp(a, "--fps") && v) { target_fps = !strcmp(v, "auto") ? -1 : atoi(v); i++; }
+        else if (!strcmp(a, "--vsync") && v) { vsync = strcmp(v, "off") != 0 && strcmp(v, "0") != 0; i++; }
         else if (!strcmp(a, "--retry")) retry = true;                          /* RETRY: */
         else if (!strcmp(a, "--retry-slot") && v) { retry_slot_n = atoi(v); i++; }
         else if (a[0] == '-' && a[1] == '-') return usage(argv[0]);
@@ -112,7 +118,7 @@ int main(int argc, char **argv)
     }
 
     if (res_scale < 0) res_scale = classic ? 1 : ENH_DEFAULT_RES_SCALE;
-    enh_init(!classic, res_scale, aa, motion_delay, town);
+    enh_init(!classic, res_scale, aa, motion_delay, town, draw_distance);
     enh_hd_init(hd && !classic);
     /* RETRY: off in demo mode (the game plays itself) */
     for (int k = 1; k < game_argc; k++) if (!SDL_strcasecmp(game_argv[k], "demo")) retry = false;
@@ -120,6 +126,8 @@ int main(int argc, char **argv)
     if (retry && retry_slot() != 16)
         fprintf(stderr, "warning: --retry-slot %d: saved game %d is overwritten before every race at Bob's\n",
                 retry_slot(), retry_slot());
+    host_set_fps(target_fps);
+    host_set_vsync(vsync);
     if (!host_init(dir, scale, fullscreen)) return 1;
     host_set_volumes(music_volume, sfx_volume);
     ega_init();                     /* 16-colour planar display: frame source, planes */

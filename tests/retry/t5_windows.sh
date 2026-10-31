@@ -26,7 +26,9 @@ extra=$(echo "$imports" | grep -vE '^(sdl3\.dll|kernel32\.dll|msvcrt\.dll|user32
 [ -z "$extra" ] || fail "unexpected DLL imports: $extra"
 pass "Windows build: streetrod-enhanced.exe + SDL3.dll, imports: $(echo $imports)"
 
-export WINEDEBUG=-all WINEPREFIX="$TESTS/wineprefix"
+# prefix outside the workspace: its z: -> / link makes IDE indexers loop
+export WINEDEBUG=-all WINEPREFIX="${SR_WINEPREFIX:-${XDG_CACHE_HOME:-$HOME/.cache}/streetrod-enhanced/wineprefix}"
+mkdir -p "$(dirname "$WINEPREFIX")"
 mkdir -p "$TESTS"
 out=$(timeout 60 wine "$exe" --game-dir "$REPO/Game" --check 2>/dev/null | tr -d '\r')
 echo "$out" | grep -q ' ok: image ' || fail "--check under Wine: $out"

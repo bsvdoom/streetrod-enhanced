@@ -34,4 +34,5 @@ bool enh_hd_sky_row(int j, int sy, double shift, bool town);
 void enh_hd_sky_clear_span(int j, int i0, int i1);
 void enh_hd_sky_clear_pixel(int j, int i);
 u32  enh_hd_sky_pixel(int j, int i);
+u32 *enh_hd_sky_buffer(void);
 bool enh_hd_has_sky(void);

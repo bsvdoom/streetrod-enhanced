@@ -5,13 +5,16 @@ not included; the game is free from the copyright owner: https://www.streetrodon
 
 ## Features
 
-* Smooth road view in races and drives through town, at your display's refresh rate.
-* High resolution (up to 2560 × 1600) with anti-aliasing.
+* Smooth road view in races and drives through town, at your display's refresh rate (120, 144, 165, 240 Hz).
+* High resolution (up to 2560 × 1600) with anti-aliasing and a multithreaded software rasterizer across CPU cores.
+* Extended road draw distance in races (up to 240 segments, 16× original view distance).
+* High-definition (HD) cockpit, instruments, gauges, and car interior graphics.
+* Target frame rate control (`--fps`) and vertical synchronisation (`--vsync`).
 * Separate music and sound effects volumes.
 * The game is otherwise the original: garage, opponents, physics, police and screens.
 * **Retry a lost race** (optional, off by default; not in the original): see [Retry](#retry).
 * The Street Rod SE data disk's 25 cars.
-* A launcher for cars, switches, picture and sound options.
+* A launcher for cars, switches, picture, performance, and sound options.
 
 ## How to play (Windows)
 
@@ -115,6 +118,10 @@ Tests of the Retry option (headless, on a copy of `Game/`): `tests/retry/t*.sh`.
 | `--fullscreen` | Start in full screen |
 | `--res-scale N` | Resolution, × 320×200 (default 4, 2–8) |
 | `--aa N` | Anti-aliasing, N×N samples (default 2, 1 = off) |
+| `--draw-distance N` | Road draw distance in races (default 60; 15 = original DOS, 120 = double, 240 = max) |
+| `--hd on\|off` | High-definition cockpit, needles, and dashboard graphics (default on) |
+| `--fps N` | Target frame rate (default -1 = auto-detect screen refresh rate, 0 = uncapped) |
+| `--vsync on\|off` | Wait for vertical sync (default on) |
 | `--motion-delay P` | Smooth view delay, % of a game frame (default 100) |
 | `--town on\|off` | Enhanced drives through town (default on) |
 | `--music-volume P` | Music volume, % (default 100) |

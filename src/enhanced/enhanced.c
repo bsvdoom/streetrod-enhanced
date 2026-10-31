@@ -11,7 +11,7 @@
 #include "host.h"
 #include "platform/ega.h"
 
-EnhOptions enh_opt = { false, 1, ENH_DEFAULT_AA, ENH_DEFAULT_MOTION_DELAY, true };
+EnhOptions enh_opt = { false, 1, ENH_DEFAULT_AA, ENH_DEFAULT_MOTION_DELAY, true, ENH_DEFAULT_DRAW_DISTANCE };
 
 /* A smoothly interpolated series of samples: [0] = the newest, [1] and [2] the ones before. */
 #define SER_N 5
@@ -59,7 +59,7 @@ static void ser_at(const Series *s, Uint64 now, double nominal_ns, double *out)
 
 #define TICK_NS ((double)PIT_DIV_GAME * 1e9 / PIT_HZ)
 
-void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town)
+void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town, int draw_distance)
 {
     enh_opt.enabled = enabled;
     enh_opt.res_scale = SDL_clamp(res_scale, 1, ENH_MAX_RES_SCALE);
@@ -67,7 +67,9 @@ void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town)
     while (enh_opt.res_scale * enh_opt.aa > ENH_MAX_SAMPLES) enh_opt.aa--;
     enh_opt.motion_delay = SDL_clamp(motion_delay, 0, 100);
     enh_opt.town = town;
+    enh_opt.draw_distance = SDL_clamp(draw_distance, ENH_MIN_DRAW_DISTANCE, ENH_MAX_DRAW_DISTANCE);
     enh_hd_init(enabled);
+    if (enabled) enh_raster_init();
     const char *t = SDL_getenv("SR_ENH_TRACE");
     if (enabled && t && *t && (trace = fopen(t, "w")) != NULL) setvbuf(trace, NULL, _IOLBF, 4096);
 }
@@ -221,14 +223,17 @@ bool enh_compose(u32 *xrgb, const u32 rgb[16])
     if (!enh_view_at(SDL_GetTicksNS(), &v)) return false;
     Uint64 t0 = SDL_GetTicksNS();
     enh_draw_road(&v);
+    Uint64 t1 = SDL_GetTicksNS();
     int y_end = SDL_min(ENH_VIEW_Y1, ega_line_compare());
-    enh_resolve(xrgb, rgb, 16, shown_start, y_end);
+    enh_raster_dispatch_and_resolve(xrgb, rgb, 16, shown_start, y_end);
+    Uint64 t2 = SDL_GetTicksNS();
     enh_hd_compose(xrgb, rgb, enh_opt.res_scale);
+    Uint64 t3 = SDL_GetTicksNS();
     if (trace) {
         static double last_pos;
-        fprintf(trace, "%llu pos %.4f d %.4f lat %.1f rh %.2f opp %.3f ms %.2f\n",
+        fprintf(trace, "%llu pos %.4f d %.4f lat %.1f rh %.2f opp %.3f ms %.2f (road:%.2f res:%.2f hd:%.2f)\n",
                 (unsigned long long)t0, v.pos, v.pos - last_pos, v.lat, v.rel_heading, v.opp_pos,
-                (SDL_GetTicksNS() - t0) / 1e6);
+                (t3 - t0) / 1e6, (t1 - t0) / 1e6, (t2 - t1) / 1e6, (t3 - t2) / 1e6);
         last_pos = v.pos;
     }
     return true;

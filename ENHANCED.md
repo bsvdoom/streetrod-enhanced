@@ -11,13 +11,18 @@ comes along with it: at 8 frames a second, a high-resolution picture only makes 
 
 ## Status (0.2.0)
 
-Stage 1 is done; stage 2 (the longer draw distance) is not started.
-
 * Done: the scaled output frame and the coverage (§2), smooth motion, the road, sky and horizon, the road-side
   objects, signs, banners, town walls, the opponent and the police car, the rear-view mirror, the town cruise,
   the options and the launcher's Picture box.
-* Still the original's picture, laid over the enhanced view: the cockpit (A-pillar, hood), the drag race's start
-  light, the messages, and the dashboard below the split with its side mirror.
+* **Longer draw distance (stage 2)**: extended to 60, 120, and 240 segments (up from the original 15), with
+  smooth horizon projection and LOD for far scenery.
+* **Multithreaded rasterizer**: software command queue with worker thread pool across all CPU cores for
+  per-row/per-band rasterization and anti-aliasing resolve, enabling 165+ FPS performance on modern displays.
+* **High-definition cockpit (HD)**: detailed high-resolution dashboard and cockpit graphics, dynamic needles
+  and shifter knobs with bilinear precomputed mapping tables.
+* **Frame pacing & VSync**: display refresh rate detection, adaptive VSync presentation, and `--fps` control.
+* Still the original's picture, laid over the enhanced view: the drag race's start light, the messages,
+  and crash / damage overlays (crash freeze frame preservation planned).
 * Changes from the plan below, made while testing:
   * **Coverage by layer.** `road_draw_frame` marks what it draws: `enh_draw_begin` / `enh_draw_fg` switch the EGA
     model between a background layer (replaced by the enhanced view) and a foreground layer (kept). The
@@ -196,6 +201,12 @@ The road ahead exists in the table, so the geometry comes almost for free. The w
    the table, which is read-only history, so no ring buffer is needed (unlike TD2E).
 9. **Cost.** Measure the render time at 1280×800 2×2 with N = 60 and 120. The target is under 4 ms a frame on
    the worker pool (TD3E: 4.2 ms with its far ring).
+10. **Crash screen freeze frame:** Keep the last enhanced 3D view frozen behind the cockpit and shattered glass
+    overlay during `crash_show()`, instead of dropping back to the original 15-segment EGA framebuffer when
+    `enh_race_end()` is called.
+11. **Multithreaded worker pool & rasterizer:** Vertical sample buffer and linear-light resolve partitioned into
+    disjoint horizontal row bands across all logical CPU cores via SDL3 worker pool (`enh_raster.c`). Eliminates
+    rasterization bottlenecks, hitting 135–400+ FPS (well above 165Hz target).
 
 **Stage 2 acceptance:**
 

@@ -47,6 +47,59 @@ static u8 script_buttons;                   /* buttons held by the script, OR'd 
 
 static void process_events(void);
 
+static int opt_fps = -1;
+static bool opt_vsync = true;
+static Uint64 frame_interval_ns = 0;
+static Uint64 next_present_ns = 0;
+static bool display_rate_checked = false;
+
+void host_set_fps(int fps)
+{
+    opt_fps = fps;
+    display_rate_checked = false;
+}
+
+void host_set_vsync(bool vsync)
+{
+    opt_vsync = vsync;
+    display_rate_checked = false;                   /* the pacing depends on it */
+    if (renderer) {
+        SDL_SetRenderVSync(renderer, vsync ? 1 : 0);
+    }
+}
+
+static void update_display_refresh(void)
+{
+    if (display_rate_checked) return;
+    display_rate_checked = true;
+
+    if (opt_fps >= 0) {
+        if (opt_fps > 0) frame_interval_ns = SDL_NS_PER_SECOND / (Uint64)opt_fps;
+        else frame_interval_ns = 0; /* 0 = uncapped */
+        return;
+    }
+    const char *fps_env = SDL_getenv("SR_FPS");
+    if (fps_env) {
+        int custom_fps = SDL_atoi(fps_env);
+        if (custom_fps > 0) frame_interval_ns = SDL_NS_PER_SECOND / (Uint64)custom_fps;
+        else frame_interval_ns = 0;
+        return;
+    }
+    /* Automatic: with VSync the presentation itself waits for the display's refresh, a timer on top of it
+     * only makes presents miss their vblank (half or a third of the rate); without VSync, the refresh
+     * rate paces them. */
+    frame_interval_ns = 0;
+    if (!opt_vsync && window) {
+        SDL_DisplayID id = SDL_GetDisplayForWindow(window);
+        const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(id);
+        if (mode && mode->refresh_rate >= 30.0f) {
+            frame_interval_ns = (Uint64)(SDL_NS_PER_SECOND / mode->refresh_rate);
+        } else {
+            frame_interval_ns = SDL_NS_PER_SECOND / 165;
+        }
+    }
+}
+
 bool host_init(const char *dir, int window_scale, bool fullscreen)
 {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
@@ -60,7 +113,7 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetRenderVSync(renderer, opt_vsync ? 1 : 0);
     if (fullscreen) SDL_SetWindowFullscreen(window, true);
     host_set_frame_source(NULL, 320, 200);
 
@@ -99,6 +152,8 @@ void host_set_focus_lost_handler(void (*handler)(void)) { focus_lost_handler = h
 void host_set_frame_source(bool (*compose)(u32 *), int w, int h)
 {
     frame_source = compose;
+    next_present_ns = 0;
+    display_rate_checked = false;
     frame_w = SDL_clamp(w, 1, HOST_FRAME_MAX_W);
     frame_h = SDL_clamp(h, 1, HOST_FRAME_MAX_H);
     SDL_free(frame);
@@ -397,17 +452,48 @@ static void snapshot(void)
 
 static void present(void)
 {
+    Uint64 t_start = SDL_GetTicksNS();
     snapshot();
     if (!texture) return;
     SDL_UpdateTexture(texture, NULL, frame, frame_w * 4);
+    Uint64 t_tex = SDL_GetTicksNS();
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     SDL_FRect dst = { 0, 0, (float)VIEW_W(frame_w), (float)VIEW_H(frame_w) };
     SDL_RenderTexture(renderer, texture, NULL, &dst);
     SDL_RenderPresent(renderer);
+    Uint64 t_pres = SDL_GetTicksNS();
+
+    static Uint64 fps_last_ns;
+    static int fps_frames;
+    static Uint64 total_tex_ns, total_pres_ns;
+    fps_frames++;
+    total_tex_ns += (t_tex - t_start);
+    total_pres_ns += (t_pres - t_tex);
+    Uint64 now = t_pres;
+    if (now - fps_last_ns >= SDL_NS_PER_SECOND) {
+        if (window) {
+            char title[128];
+            snprintf(title, sizeof title, "Street Rod Enhanced — %d FPS (%.1f ms)",
+                     fps_frames, fps_frames > 0 ? 1000.0 / fps_frames : 0.0);
+            const char *cur = SDL_GetWindowTitle(window);
+            if (!cur || strcmp(cur, title) != 0) {
+                SDL_SetWindowTitle(window, title);
+            }
+        }
+        if (SDL_getenv("SR_DEBUG_FPS")) {
+            fprintf(stderr, "[HOST FPS] %d FPS (avg frame: %.2f ms | tex: %.2f ms | pres: %.2f ms)\n",
+                    fps_frames, fps_frames > 0 ? 1000.0 / fps_frames : 0.0,
+                    fps_frames > 0 ? (double)total_tex_ns / fps_frames / 1e6 : 0.0,
+                    fps_frames > 0 ? (double)total_pres_ns / fps_frames / 1e6 : 0.0);
+        }
+        fps_frames = 0;
+        total_tex_ns = 0;
+        total_pres_ns = 0;
+        fps_last_ns = now;
+    }
 }
 
-static Uint64 last_present_ns;
 
 /* Developer aid: SR_KEYS, see host.h. */
 void host_set_pointer_query(bool (*query)(s16 *x, s16 *y)) { pointer_query = query; }
@@ -541,18 +627,36 @@ void host_pump(void)
         clock_start_ns = now - (tick_due_ns(ticks_run) - clock_start_ns);
     }
 
-    /* Present at most once per ~8 ms; VSync paces it further. */
-    if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS) {
+    update_display_refresh();
+
+    /* Present pacing: with VSync (and no cap) every frame is presented and the present waits for the
+     * display (at most every 2 ms, should a driver's VSync not wait); with a cap, or without VSync,
+     * presents are due every frame_interval_ns. */
+    static Uint64 last_present_ns;
+    bool due = frame_interval_ns > 0 ? next_present_ns == 0 || now >= next_present_ns
+                                     : !opt_vsync || now - last_present_ns >= 2 * SDL_NS_PER_MS;
+    if (frame_source && due) {
         if (frame_source(frame)) {
             present();
             last_present_ns = SDL_GetTicksNS();
+            if (frame_interval_ns > 0) {
+                /* on the grid; a frame that took longer than the interval is followed at once, not after
+                 * another whole interval */
+                next_present_ns = next_present_ns == 0 ? last_present_ns + frame_interval_ns
+                                                       : next_present_ns + frame_interval_ns;
+                if (next_present_ns < last_present_ns) next_present_ns = last_present_ns;
+            }
             worked = true;
         }
     }
     if (!worked) {
-        Uint64 next = tick_due_ns(ticks_run + 1);
+        /* Wait for the next tick or present in steps of at most 1 ms. SDL_DelayPrecise: a plain sleep can
+         * overrun by a whole system timer period (15.6 ms on Windows), which caps the frame rate. */
+        Uint64 target = tick_due_ns(ticks_run + 1);
+        if (frame_source && frame_interval_ns > 0 && next_present_ns > 0 && next_present_ns < target)
+            target = next_present_ns;
         now = SDL_GetTicksNS();
-        if (next > now) SDL_DelayNS(SDL_min(next - now, SDL_NS_PER_MS));
+        if (target > now) SDL_DelayPrecise(SDL_min(target - now, SDL_NS_PER_MS));
     }
 }
 
@@ -810,6 +914,11 @@ char *host_game_path(const char *name, bool create)
     if (create) return direct;
     SDL_free(direct);
     return NULL;
+}
+
+const char *host_game_dir(void)
+{
+    return game_dir;
 }
 
 void host_free(void *p)

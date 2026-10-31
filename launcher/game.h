@@ -41,9 +41,13 @@ struct GameOptions {
     bool noMouse = false;   // the game's "nomouse" switch
     int scale = 3;          // --scale: the window is 320x240 times this
     bool fullscreen = false;  // --fullscreen
+    bool vsync = true;      // --vsync on|off
+    int fps = -1;           // --fps N (-1 = auto)
     bool classic = false;   // --classic: the original's picture only
     int resScale = 4;       // --res-scale: the picture is 320x200 times this
     int aa = 2;             // --aa: anti-aliasing, aa x aa samples per pixel
+    int drawDistance = 60;  // --draw-distance N (15, 60, 120, 240)
+    bool hd = true;         // --hd on|off: high-definition cockpit and menus
     bool town = true;       // --town on|off: the drives through town enhanced too
     bool retry = false;     // --retry: after a lost race at Bob's, offer to run the same race again
     Sounds sounds;

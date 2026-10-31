@@ -22,10 +22,30 @@ int main() {
     o.program = "streetrod-enhanced";
     o.gameDir = "Game";
     Check(!Has(GameArguments(o), "--retry"), "default options: no --retry");
+    Check(!Has(GameArguments(o), "--vsync"), "default options: no --vsync switch");
+    Check(!Has(GameArguments(o), "--fps"), "default options: no --fps switch");
+    Check(!Has(GameArguments(o), "--draw-distance"), "default options: no --draw-distance switch");
+    Check(!Has(GameArguments(o), "--hd"), "default options: no --hd switch");
     o.retry = true;
     Check(Has(GameArguments(o), "--retry"), "retry on: --retry");
     o.demo = true;
     Check(Has(GameArguments(o), "--retry") && Has(GameArguments(o), "demo"),
           "retry and demo: both passed (the game ignores --retry in demo mode)");
+
+    GameOptions o2;
+    o2.program = "streetrod-enhanced";
+    o2.gameDir = "Game";
+    o2.vsync = false;
+    Check(Has(GameArguments(o2), "--vsync") && Has(GameArguments(o2), "off"), "vsync off: --vsync off");
+    o2.fps = 144;
+    Check(Has(GameArguments(o2), "--fps") && Has(GameArguments(o2), "144"), "fps 144: --fps 144");
+    o2.fps = 0;
+    Check(Has(GameArguments(o2), "--fps") && Has(GameArguments(o2), "0"), "fps uncapped: --fps 0");
+    o2.drawDistance = 120;
+    Check(Has(GameArguments(o2), "--draw-distance") && Has(GameArguments(o2), "120"),
+          "draw distance 120: --draw-distance 120");
+    o2.hd = false;
+    Check(Has(GameArguments(o2), "--hd") && Has(GameArguments(o2), "off"), "hd off: --hd off");
+
     return failures == 0 ? 0 : 1;
 }

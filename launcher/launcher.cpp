@@ -49,6 +49,13 @@ const int MIN_SCALE = 1, MAX_SCALE = 6, DEFAULT_SCALE = 3;
 const int MIN_RES = 2, MAX_RES = 8, DEFAULT_RES = 4;     // --res-scale
 const int MAX_AA = 4, DEFAULT_AA = 2;                    // --aa (1 = off)
 
+const int FPS_VALUES[] = { -1, 60, 120, 144, 165, 240, 0 };
+const int NUM_FPS_VALUES = sizeof(FPS_VALUES) / sizeof(FPS_VALUES[0]);
+
+const int DRAW_DISTANCES[] = { 15, 60, 120, 240 };
+const int NUM_DRAW_DISTANCES = sizeof(DRAW_DISTANCES) / sizeof(DRAW_DISTANCES[0]);
+const int DEFAULT_DRAW_DISTANCE = 60;
+
 #ifdef __WXMSW__
 HRESULT CALLBACK AboutCallback(HWND hwnd, UINT msg, WPARAM, LPARAM lp, LONG_PTR) {
     if (msg == TDN_HYPERLINK_CLICKED)
@@ -151,10 +158,25 @@ LauncherFrame::LauncherFrame()
     scale_->SetSelection(
         wxMax(MIN_SCALE, wxMin(MAX_SCALE, settings::GetInt(SECTION, "Scale", DEFAULT_SCALE))) - MIN_SCALE);
     fullscreen_->SetValue(settings::GetInt(SECTION, "Fullscreen", 0) != 0);
+    vsync_->SetValue(settings::GetInt(SECTION, "VSync", 1) != 0);
+    int savedFps = settings::GetInt(SECTION, "FPS", -1);
+    int fpsSel = 0;
+    for (int i = 0; i < NUM_FPS_VALUES; ++i) {
+        if (FPS_VALUES[i] == savedFps) { fpsSel = i; break; }
+    }
+    fps_->SetSelection(fpsSel);
+
     graphics_->SetSelection(settings::GetInt(SECTION, "Classic", 0) != 0 ? 1 : 0);
     resolution_->SetSelection(
         wxMax(MIN_RES, wxMin(MAX_RES, settings::GetInt(SECTION, "ResScale", DEFAULT_RES))) - MIN_RES);
     aa_->SetSelection(wxMax(1, wxMin(MAX_AA, settings::GetInt(SECTION, "AA", DEFAULT_AA))) - 1);
+    int savedDist = settings::GetInt(SECTION, "DrawDistance", DEFAULT_DRAW_DISTANCE);
+    int distSel = 1; // 60
+    for (int i = 0; i < NUM_DRAW_DISTANCES; ++i) {
+        if (DRAW_DISTANCES[i] == savedDist) { distSel = i; break; }
+    }
+    drawDistance_->SetSelection(distSel);
+    hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
     ShowSounds(sounds_);
     loading_ = false;
@@ -248,9 +270,23 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     for (int s = MIN_SCALE; s <= MAX_SCALE; ++s) scale_->Append(wxString::Format(L"%d × %d", 320 * s, 240 * s));
     scale_->SetToolTip("The window's size when the game starts. Alt+Enter switches to full screen.");
     grid->Add(scale_, 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(new wxStaticText(ob, wxID_ANY, "&Target FPS:"), 0, wxALIGN_CENTER_VERTICAL);
+    fps_ = new wxChoice(ob, wxID_ANY);
+    fps_->Append("Auto: match screen refresh");
+    fps_->Append("60 FPS");
+    fps_->Append("120 FPS");
+    fps_->Append("144 FPS");
+    fps_->Append("165 FPS");
+    fps_->Append("240 FPS");
+    fps_->Append("Uncapped");
+    fps_->SetToolTip("Target frame rate. Auto synchronises smoothly with your monitor's refresh rate.");
+    grid->Add(fps_, 0, wxALIGN_CENTER_VERTICAL);
     optionsBox->Add(grid, 0, wxLEFT | wxRIGHT | wxTOP, gap);
     fullscreen_ = new wxCheckBox(ob, wxID_ANY, "Start in f&ull screen (Alt+Enter switches)");
-    optionsBox->Add(fullscreen_, 0, wxALL, gap);
+    optionsBox->Add(fullscreen_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
+    vsync_ = new wxCheckBox(ob, wxID_ANY, "Vertical sync (&VSync)");
+    vsync_->SetToolTip("Sync presentation with monitor refresh to eliminate tearing. Recommended on.");
+    optionsBox->Add(vsync_, 0, wxALL, gap);
 
     // Keys
     auto* keysBox = new wxStaticBoxSizer(wxVERTICAL, page, "Keys in the game");
@@ -302,7 +338,18 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     for (int a = 2; a <= MAX_AA; ++a) aa_->Append(wxString::Format(L"%d × %d", a, a));
     aa_->SetToolTip("Smooth edges: samples per pixel. Higher costs more time per frame.");
     pgrid->Add(aa_, 0, wxALIGN_CENTER_VERTICAL);
+    pgrid->Add(new wxStaticText(pb, wxID_ANY, "&Draw distance:"), 0, wxALIGN_CENTER_VERTICAL);
+    drawDistance_ = new wxChoice(pb, wxID_ANY);
+    drawDistance_->Append("15 segments: original DOS Street Rod");
+    drawDistance_->Append("60 segments: 4x distance (default)");
+    drawDistance_->Append("120 segments: 8x distance");
+    drawDistance_->Append("240 segments: 16x distance (maximum)");
+    drawDistance_->SetToolTip("How far down the road is drawn in races. Higher values let you see turns and opponents earlier.");
+    pgrid->Add(drawDistance_, 0, wxALIGN_CENTER_VERTICAL);
     pictureBox->Add(pgrid, 0, wxLEFT | wxRIGHT | wxTOP, gap);
+    hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD)");
+    hd_->SetToolTip("Draws detailed high-resolution instruments, gauges, and car interior graphics.");
+    pictureBox->Add(hd_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
     town_ = new wxCheckBox(pb, wxID_ANY, "Drives through &town enhanced too");
     pictureBox->Add(town_, 0, wxALL, gap);
     graphics_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateState(); });
@@ -482,6 +529,8 @@ void LauncherFrame::UpdateState() {
     const bool enhanced = graphics_->GetSelection() == 0;
     resolution_->Enable(enhanced);
     aa_->Enable(enhanced);
+    drawDistance_->Enable(enhanced);
+    hd_->Enable(enhanced);
     town_->Enable(enhanced);
     retry_->Enable(!demo_->GetValue());               // the game switches Retry off in the demo
     book_->GetPage(PAGE_MAIN)->Layout();
@@ -517,9 +566,13 @@ void LauncherFrame::Play() {
     options.retry = retry_->GetValue() && !demo_->GetValue();
     options.scale = scale_->GetSelection() + MIN_SCALE;
     options.fullscreen = fullscreen_->GetValue();
+    options.vsync = vsync_->GetValue();
+    options.fps = FPS_VALUES[fps_->GetSelection()];
     options.classic = graphics_->GetSelection() == 1;
     options.resScale = resolution_->GetSelection() + MIN_RES;
     options.aa = aa_->GetSelection() + 1;
+    options.drawDistance = DRAW_DISTANCES[drawDistance_->GetSelection()];
+    options.hd = hd_->GetValue();
     options.town = town_->GetValue();
     options.sounds = sounds_;
     wxString error;
@@ -540,9 +593,13 @@ void LauncherFrame::Save() {
     settings::SetInt(SECTION, "Retry", retry_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Scale", scale_->GetSelection() + MIN_SCALE);
     settings::SetInt(SECTION, "Fullscreen", fullscreen_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "VSync", vsync_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "FPS", FPS_VALUES[fps_->GetSelection()]);
     settings::SetInt(SECTION, "Classic", graphics_->GetSelection() == 1 ? 1 : 0);
     settings::SetInt(SECTION, "ResScale", resolution_->GetSelection() + MIN_RES);
     settings::SetInt(SECTION, "AA", aa_->GetSelection() + 1);
+    settings::SetInt(SECTION, "DrawDistance", DRAW_DISTANCES[drawDistance_->GetSelection()]);
+    settings::SetInt(SECTION, "HD", hd_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Town", town_->GetValue() ? 1 : 0);
     settings::SaveWindowPosition(SECTION, this);
 }

@@ -1,6 +1,7 @@
 /* HD pictures implementation: asset loading, cockpit compositing, HD sky/horizon sheets. */
 #include "enhanced/enh_hd.h"
 #include "enhanced/enh_internal.h"
+#include "enhanced/enhanced.h"
 #include "host.h"
 #include "mem.h"
 #include "platform/ega.h"
@@ -209,27 +210,59 @@ static int hd_sky_w = 0, hd_sky_h = 0, hd_sky_sa = 0;
 
 static u32 *load_image(const char *rel_path, int *w, int *h)
 {
+    size_t size = 0;
+    void *buf = NULL;
+
+    /* 1. Try host_game_path */
     char *path = host_game_path(rel_path, false);
-    if (!path) return NULL;
-    FILE *f = fopen(path, "rb");
-    host_free(path);
-    if (!f) return NULL;
+    if (path) {
+        buf = SDL_LoadFile(path, &size);
+        host_free(path);
+    }
 
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0) { fclose(f); return NULL; }
+    /* 2. Candidate paths */
+    if (!buf) {
+        const char *base = SDL_GetBasePath();
+        const char *game = host_game_dir();
+        char p[512];
 
-    u8 *buf = SDL_malloc((size_t)size);
-    if (!buf || fread(buf, 1, (size_t)size, f) != (size_t)size) {
-        fclose(f);
-        SDL_free(buf);
+        if (game) {
+            SDL_snprintf(p, sizeof p, "%s/%s", game, rel_path);
+            buf = SDL_LoadFile(p, &size);
+            if (!buf) {
+                const char *slash = strrchr(rel_path, '/');
+                SDL_snprintf(p, sizeof p, "%s/%s", game, slash ? slash + 1 : rel_path);
+                buf = SDL_LoadFile(p, &size);
+            }
+        }
+        if (!buf && base) {
+            SDL_snprintf(p, sizeof p, "%s%s", base, rel_path);
+            buf = SDL_LoadFile(p, &size);
+            if (!buf) {
+                SDL_snprintf(p, sizeof p, "%sGame/%s", base, rel_path);
+                buf = SDL_LoadFile(p, &size);
+            }
+            if (!buf) {
+                SDL_snprintf(p, sizeof p, "%s../Game/%s", base, rel_path);
+                buf = SDL_LoadFile(p, &size);
+            }
+        }
+        if (!buf) {
+            buf = SDL_LoadFile(rel_path, &size);
+            if (!buf) {
+                SDL_snprintf(p, sizeof p, "Game/%s", rel_path);
+                buf = SDL_LoadFile(p, &size);
+            }
+        }
+    }
+
+    if (!buf || size == 0) {
+        if (buf) SDL_free(buf);
         return NULL;
     }
-    fclose(f);
 
     int comp = 0;
-    stbi_uc *data = stbi_load_from_memory(buf, (int)size, w, h, &comp, 4);
+    stbi_uc *data = stbi_load_from_memory((const stbi_uc *)buf, (int)size, w, h, &comp, 4);
     SDL_free(buf);
     if (!data) return NULL;
 
@@ -258,6 +291,8 @@ static void load_asset(const char *name, ImageHD *out)
     }
     if (out->pixels) {
         fprintf(stderr, "HD loaded: %s (%dx%d)\n", name, out->w, out->h);
+    } else {
+        fprintf(stderr, "HD notice: %s not found (vanilla graphics used)\n", name);
     }
 }
 
@@ -433,59 +468,21 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 
     /* Check if Dialog 1 (top green crash results or message box) is active */
     bool top_dialog_active = false;
-    s16 top_d_depth = DSS(0x8B8E);
-    if (top_d_depth > 0 && top_d_depth <= 4) {
-        for (int d = 0; d < top_d_depth; d++) {
-            s16 scr = DSS((u16)(0x8B86 + 2 * d));
-            if (scr == 0x18 || scr == 0x19 || scr == 0x1A) {
-                top_dialog_active = true;
-                break;
-            }
-        }
-    }
-    if (!top_dialog_active) {
-        /* Fallback check: sample interior of Dialog 1 at (100, 20) and (120, 30) */
-        u16 r_t = 20 < line_compare ? (u16)(start_addr + 20 * EGA_BYTES_PER_LINE)
-                                    : (u16)((20 - line_compare) * EGA_BYTES_PER_LINE);
-        u16 o_t = (u16)(r_t + (100 >> 3));
-        int b_t = 7 - (100 & 7);
-        int c_t = ((p0[o_t] >> b_t & 1)     ) |
-                  ((p1[o_t] >> b_t & 1) << 1) |
-                  ((p2[o_t] >> b_t & 1) << 2) |
-                  ((p3[o_t] >> b_t & 1) << 3);
-        if (c_t == 2) {
-            u16 r_t2 = 30 < line_compare ? (u16)(start_addr + 30 * EGA_BYTES_PER_LINE)
-                                         : (u16)((30 - line_compare) * EGA_BYTES_PER_LINE);
-            u16 o_t2 = (u16)(r_t2 + (120 >> 3));
-            int b_t2 = 7 - (120 & 7);
-            int c_t2 = ((p0[o_t2] >> b_t2 & 1)     ) |
-                       ((p1[o_t2] >> b_t2 & 1) << 1) |
-                       ((p2[o_t2] >> b_t2 & 1) << 2) |
-                       ((p3[o_t2] >> b_t2 & 1) << 3);
-            if (c_t2 == 2) top_dialog_active = true;
-        }
-    }
-
-    /* Check if top rear-view mirror cutout is covered */
-    bool top_mirror_covered = top_dialog_active;
-    if (!top_mirror_covered) {
-        for (int my = 22; my < 41 && !top_mirror_covered; my += 4) {
-            u16 mrow = my < line_compare ? (u16)(start_addr + my * EGA_BYTES_PER_LINE)
-                                         : (u16)((my - line_compare) * EGA_BYTES_PER_LINE);
-            for (int mx = 248; mx < 280; mx += 8) {
-                u16 o = (u16)(mrow + (mx >> 3));
-                int bit = 7 - (mx & 7);
-                int ega_c = ((p0[o] >> bit & 1)     ) |
-                            ((p1[o] >> bit & 1) << 1) |
-                            ((p2[o] >> bit & 1) << 2) |
-                            ((p3[o] >> bit & 1) << 3);
-                if (ega_c == 2 || ega_c == 10) {
-                    top_mirror_covered = true;
+    if (hd_crashed) {
+        s16 top_d_depth = DSS(0x8B8E);
+        if (top_d_depth > 0 && top_d_depth <= 4) {
+            for (int d = 0; d < top_d_depth; d++) {
+                s16 scr = DSS((u16)(0x8B86 + 2 * d));
+                if (scr == 0x18 || scr == 0x19 || scr == 0x1A) {
+                    top_dialog_active = true;
                     break;
                 }
             }
         }
     }
+
+    /* Top rear-view mirror cutout is covered only if an actual dialog covers it */
+    bool top_mirror_covered = top_dialog_active;
 
     /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
     int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
@@ -513,9 +510,23 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
         }
     }
 
+    /* Output column / row -> cockpit picture column / row: once per frame, not per output pixel. */
+    static int hx_of[320 * ENH_MAX_RES_SCALE], hy_of[190 * ENH_MAX_RES_SCALE];
+    for (int X = 0; X < W; X++) {
+        int hx = (X * cw) / W;
+        hx_of[X] = hx < cw ? hx : cw - 1;
+    }
+    for (int Y = 0; Y < 190 * res_scale; Y++) {
+        int hy = (Y * ch) / (190 * res_scale);
+        hy_of[Y] = hy < ch ? hy : ch - 1;
+    }
+    bool retry_dialog = retry_is_dialog_active();
+
     for (int y = 0; y < 190; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
+        /* Dynamic hood/fender recoloring applies right of this column on rows 96..113 */
+        int hood_min_x = (y >= 96 && y < 114) ? 72 + ((114 - y) * 26) / 16 : 320;
         for (int x = 0; x < 320; x++) {
             u16 o = (u16)(row + (x >> 3));
             int bit = 7 - (x & 7);
@@ -537,31 +548,27 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
             bool in_dial = (dtx * dtx + dty * dty <= 27 * 27) || (dsx * dsx + dsy * dsy <= 27 * 27);
             bool in_wheel_spokes = (x >= 80 && x < 264 && y >= 163 && y < 190);
             bool in_shifter = (x >= 264 && x < 312 && y >= 123 && y < 166);
+            bool in_hood = (x >= 50 && y >= 70);
             bool in_d1 = top_dialog_active && (x >= 37 && x <= 288 && y >= 7 && y <= 53);
             bool in_d2 = (x >= 58 && x <= 258 && y >= 70 && y <= 120)
-                         && (retry_is_dialog_active() || (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8));
+                         && (retry_dialog || (ega_c == 15 || ega_c == 0 || ega_c == 7 || ega_c == 8));
             if (in_d1 || in_d2) continue;
-            if (ega_c != orig_c && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
+            if (ega_c != orig_c && !in_hood && !in_side_mirror && !in_dial && !in_wheel_spokes && !in_shifter) continue;
 
+            bool hood = x >= hood_min_x;
             for (int oy = 0; oy < res_scale; oy++) {
                 int Y = y * res_scale + oy;
-                int hy = (Y * ch) / (190 * res_scale);
-                if (hy >= ch) hy = ch - 1;
-                const u32 *hd_row = img_cockpit.pixels + (size_t)hy * cw;
+                const u32 *hd_row = img_cockpit.pixels + (size_t)hy_of[Y] * cw;
                 u32 *out = xrgb + (size_t)Y * W;
 
                 for (int ox = 0; ox < res_scale; ox++) {
                     int X = x * res_scale + ox;
-                    int hx = (X * cw) / W;
-                    if (hx >= cw) hx = cw - 1;
-
-                    u32 px = hd_row[hx];
+                    u32 px = hd_row[hx_of[X]];
                     u8 a = (u8)(px >> 24);
                     if (a == 0) continue; /* Transparent: windshield/mirror road view */
 
                     /* Dynamic hood/fender recoloring matching player car paint */
-                    int hood_min_x = 72 + ((114 - y) * 26) / 16;
-                    if (y >= 96 && y < 114 && x >= hood_min_x) {
+                    if (hood) {
                         int pr = (int)((px >> 16) & 0xFF);
                         int pg = (int)((px >> 8) & 0xFF);
                         int pb = (int)(px & 0xFF);
@@ -793,9 +800,9 @@ void enh_hd_sky_begin(int w, int h, int sa)
         hd_sky_buf = SDL_malloc((size_t)w * (size_t)h * sizeof(u32));
         hd_sky_w = w;
         hd_sky_h = h;
+        if (hd_sky_buf) memset(hd_sky_buf, 0, (size_t)w * (size_t)h * sizeof(u32));
     }
     hd_sky_sa = sa;
-    if (hd_sky_buf) memset(hd_sky_buf, 0, (size_t)w * (size_t)h * sizeof(u32));
 }
 
 bool enh_hd_sky_row(int j, int sy, double shift, bool town)
@@ -845,6 +852,11 @@ u32 enh_hd_sky_pixel(int j, int i)
 {
     if (!hd_sky_buf || j < 0 || j >= hd_sky_h || i < 0 || i >= hd_sky_w) return 0;
     return hd_sky_buf[j * hd_sky_w + i];
+}
+
+u32 *enh_hd_sky_buffer(void)
+{
+    return hd_sky_buf;
 }
 
 bool enh_hd_has_sky(void)
