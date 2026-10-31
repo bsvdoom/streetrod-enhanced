@@ -47,8 +47,8 @@ int main() {
           "draw distance 120: --draw-distance 120");
     o2.hd = false;
     Check(Has(GameArguments(o2), "--hd") && Has(GameArguments(o2), "off"), "hd off: --hd off");
-    o2.skyScroll = true;
-    Check(Has(GameArguments(o2), "--sky-scroll"), "sky scroll: --sky-scroll on");
+    o2.skyScroll = 100;
+    Check(Has(GameArguments(o2), "--sky-scroll") && Has(GameArguments(o2), "100"), "sky scroll: --sky-scroll 100");
 
     return failures == 0 ? 0 : 1;
 }

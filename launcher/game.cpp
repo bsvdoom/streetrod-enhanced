@@ -93,8 +93,8 @@ std::vector<wxString> GameArguments(const GameOptions& o) {
             args.insert(args.end(), {"--draw-distance", wxString::Format("%d", o.drawDistance)});
         if (!o.hd)
             args.insert(args.end(), {"--hd", "off"});
-        if (o.skyScroll)
-            args.insert(args.end(), {"--sky-scroll", "on"});
+        if (o.skyScroll != 10)
+            args.insert(args.end(), {"--sky-scroll", wxString::Format("%d", o.skyScroll)});
     }
     // The volumes only when turned down, so the default command line stays as it was.
     if (o.sounds.music != 100) args.insert(args.end(), {"--music-volume", wxString::Format("%d", o.sounds.music)});

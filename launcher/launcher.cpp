@@ -56,6 +56,10 @@ const int DRAW_DISTANCES[] = { 15, 60, 120 };            // --draw-distance (the
 const int NUM_DRAW_DISTANCES = sizeof(DRAW_DISTANCES) / sizeof(DRAW_DISTANCES[0]);
 const int DEFAULT_DRAW_DISTANCE = 60;
 
+const int SKY_SCROLLS[] = { 0, 10, 25, 50, 100 };          // --sky-scroll, percent of the original's turn
+const int NUM_SKY_SCROLLS = sizeof(SKY_SCROLLS) / sizeof(SKY_SCROLLS[0]);
+const int DEFAULT_SKY_SCROLL = 10;
+
 #ifdef __WXMSW__
 HRESULT CALLBACK AboutCallback(HWND hwnd, UINT msg, WPARAM, LPARAM lp, LONG_PTR) {
     if (msg == TDN_HYPERLINK_CLICKED)
@@ -177,7 +181,11 @@ LauncherFrame::LauncherFrame()
     drawDistance_->SetSelection(distSel);
     hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
-    skyScroll_->SetValue(settings::GetInt(SECTION, "SkyScroll", 0) != 0);
+    int savedSky = settings::GetInt(SECTION, "SkyScroll", DEFAULT_SKY_SCROLL);
+    int skySel = 1;                                   // 10%; an unknown value: the nearest below it
+    for (int i = 0; i < NUM_SKY_SCROLLS; ++i)
+        if (SKY_SCROLLS[i] <= savedSky) skySel = i;
+    skyScroll_->SetSelection(skySel);
     ShowSounds(sounds_);
     loading_ = false;
     UpdateState();
@@ -345,13 +353,21 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     drawDistance_->Append("120 segments: 8x distance (maximum)");
     drawDistance_->SetToolTip("How far down the road is drawn in races. Higher values let you see turns and opponents earlier.");
     pgrid->Add(drawDistance_, 0, wxALIGN_CENTER_VERTICAL);
+    pgrid->Add(new wxStaticText(pb, wxID_ANY, "S&ky turns:"), 0, wxALIGN_CENTER_VERTICAL);
+    skyScroll_ = new wxChoice(pb, wxID_ANY);
+    skyScroll_->Append("Not at all");
+    skyScroll_->Append("1/10 of the original (default)");
+    skyScroll_->Append("1/4 of the original");
+    skyScroll_->Append("1/2 of the original");
+    skyScroll_->Append("As in the original");
+    skyScroll_->SetToolTip("How much the sky and the horizon turn with the road. At the original's rate they "
+                           "look wrong over the longer draw distance.");
+    pgrid->Add(skyScroll_, 0, wxALIGN_CENTER_VERTICAL);
     pictureBox->Add(pgrid, 0, wxLEFT | wxRIGHT | wxTOP, gap);
     hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD)");
     hd_->SetToolTip("Draws detailed high-resolution instruments, gauges, and car interior graphics.");
     pictureBox->Add(hd_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
-    skyScroll_ = new wxCheckBox(pb, wxID_ANY, "S&ky and horizon turn with the road (as in the original)");
-    skyScroll_->SetToolTip("Off: the sky and the horizon stand still, which suits the longer draw distance.");
-    pictureBox->Add(skyScroll_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
+
     town_ = new wxCheckBox(pb, wxID_ANY, "Drives through &town enhanced too");
     pictureBox->Add(town_, 0, wxALL, gap);
     graphics_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateState(); });
@@ -577,7 +593,7 @@ void LauncherFrame::Play() {
     options.drawDistance = DRAW_DISTANCES[drawDistance_->GetSelection()];
     options.hd = hd_->GetValue();
     options.town = town_->GetValue();
-    options.skyScroll = skyScroll_->GetValue();
+    options.skyScroll = SKY_SCROLLS[skyScroll_->GetSelection()];
     options.sounds = sounds_;
     wxString error;
     if (!LaunchGame(options, error)) wxMessageBox(error, APP_TITLE, wxOK | wxICON_ERROR, this);
@@ -605,7 +621,7 @@ void LauncherFrame::Save() {
     settings::SetInt(SECTION, "DrawDistance", DRAW_DISTANCES[drawDistance_->GetSelection()]);
     settings::SetInt(SECTION, "HD", hd_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Town", town_->GetValue() ? 1 : 0);
-    settings::SetInt(SECTION, "SkyScroll", skyScroll_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "SkyScroll", SKY_SCROLLS[skyScroll_->GetSelection()]);
     settings::SaveWindowPosition(SECTION, this);
 }
 

@@ -13,7 +13,7 @@ typedef struct {
     int res_scale, aa, motion_delay;
     bool town;
     int draw_distance;
-    bool sky_scroll;           /* the sky and the horizon turn with the heading (the original's way) */
+    int sky_scroll;            /* percent of the original's turn of the sky and the horizon with the heading */
 } EnhOptions;
 extern EnhOptions enh_opt;
 

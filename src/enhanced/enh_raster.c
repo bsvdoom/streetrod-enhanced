@@ -18,7 +18,6 @@
 
 #define COL_ROAD    1
 #define COL_GRASS   9
-#define SKY_SCROLL  0.75
 
 typedef enum {
     CMD_CLIP,
@@ -327,10 +326,10 @@ static inline void render_sky_band(const RenderCmd *cmd, int j_start, int j_end)
         for (int j = j_start; j < j_end; j++) {
             double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;
             if (y < hy - 12)
-                sky_sample_row(j, j_start, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading, false,
+                sky_sample_row(j, j_start, (int)floor(y + 0xA6 - hy), 2.0 * heading, false,      /* the original: x2 */
                                &last_sy, &last_shift);
             else if (y < hy + 8)
-                sky_sample_row(j, j_start, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading, false,
+                sky_sample_row(j, j_start, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * heading, false,   /* x4 */
                                &last_sy, &last_shift);
             else {
                 memset(b->px + (size_t)j * b->w, COL_GRASS, (size_t)b->w);
