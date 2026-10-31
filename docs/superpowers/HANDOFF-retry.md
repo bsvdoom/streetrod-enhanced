@@ -129,6 +129,6 @@ T5 Windows game build 15–30 min, T6 launcher 20–40 min (riskiest: wx cross b
   `3*king_penalties` / `2*king_penalties`. Tests: wins in the `retry: start` line; enough wins: offer and
   reduced wins on the restart; few wins: no offer; two losses: -6/-4. Note: the King accepts when all
   other opponents are gone, or with >= 6 drag and >= 6 road wins and wins >= races/2 (`king_status`).
-* **GitHub Actions release build** from a tag (open question for the user).
+* **GitHub Actions release build** from a tag: done (`.github/workflows/build.yml`, `v*` tags).
 * **Retry slot choice in the launcher** (deferred by the user 2026-10-29): a 1–16 choice passed as
   `--retry-slot N` (the game option exists; default 16).

@@ -25,7 +25,8 @@ int main() {
     Check(!Has(GameArguments(o), "--vsync"), "default options: no --vsync switch");
     Check(!Has(GameArguments(o), "--fps"), "default options: no --fps switch");
     Check(!Has(GameArguments(o), "--draw-distance"), "default options: no --draw-distance switch");
-    Check(!Has(GameArguments(o), "--hd"), "default options: no --hd switch");
+    Check(Has(GameArguments(o), "--hd") && Has(GameArguments(o), "off"),
+          "default options: --hd off (HD is experimental, off by default)");
     Check(!Has(GameArguments(o), "--reduced-sky-rotation"), "default options: no --reduced-sky-rotation switch");
     o.retry = true;
     Check(Has(GameArguments(o), "--retry"), "retry on: --retry");
@@ -45,8 +46,8 @@ int main() {
     o2.drawDistance = 120;
     Check(Has(GameArguments(o2), "--draw-distance") && Has(GameArguments(o2), "120"),
           "draw distance 120: --draw-distance 120");
-    o2.hd = false;
-    Check(Has(GameArguments(o2), "--hd") && Has(GameArguments(o2), "off"), "hd off: --hd off");
+    o2.hd = true;
+    Check(!Has(GameArguments(o2), "--hd"), "hd on: no --hd switch (the game's default)");
     o2.reducedSky = false;
     Check(Has(GameArguments(o2), "--reduced-sky-rotation") && Has(GameArguments(o2), "off"),
           "sky as the original: --reduced-sky-rotation off");

@@ -176,7 +176,7 @@ LauncherFrame::LauncherFrame()
     for (int i = 0; i < NUM_DRAW_DISTANCES; ++i)
         if (DRAW_DISTANCES[i] <= savedDist) distSel = i;
     drawDistance_->SetSelection(distSel);
-    hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
+    hd_->SetValue(settings::GetInt(SECTION, "HD", 0) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
     reducedSky_->SetValue(settings::GetInt(SECTION, "ReducedSky", 1) != 0);
     ShowSounds(sounds_);
@@ -341,14 +341,14 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     pgrid->Add(aa_, 0, wxALIGN_CENTER_VERTICAL);
     pgrid->Add(new wxStaticText(pb, wxID_ANY, "&Draw distance:"), 0, wxALIGN_CENTER_VERTICAL);
     drawDistance_ = new wxChoice(pb, wxID_ANY);
-    drawDistance_->Append("15 segments: original DOS Street Rod");
-    drawDistance_->Append("60 segments: 4x distance (default)");
-    drawDistance_->Append("120 segments: 8x distance (maximum)");
+    drawDistance_->Append("original DOS Street Rod");
+    drawDistance_->Append("4x distance (default)");
+    drawDistance_->Append("8x distance (maximum)");
     drawDistance_->SetToolTip("How far down the road is drawn in races. Higher values let you see turns and opponents earlier.");
     pgrid->Add(drawDistance_, 0, wxALIGN_CENTER_VERTICAL);
     pictureBox->Add(pgrid, 0, wxLEFT | wxRIGHT | wxTOP, gap);
-    hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD)");
-    hd_->SetToolTip("Draws detailed high-resolution instruments, gauges, and car interior graphics.");
+    hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD, experimental)");
+    hd_->SetToolTip("Experimental: draws detailed high-resolution instruments, gauges, and car interior graphics.");
     pictureBox->Add(hd_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
     reducedSky_ = new wxCheckBox(pb, wxID_ANY, "Reduced s&kybox rotation");
     reducedSky_->SetToolTip("The sky and the horizon turn a quarter as much as in the original, which suits the "

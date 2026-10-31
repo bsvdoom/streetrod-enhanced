@@ -47,7 +47,7 @@ struct GameOptions {
     int resScale = 4;       // --res-scale: the picture is 320x200 times this
     int aa = 2;             // --aa: anti-aliasing, aa x aa samples per pixel
     int drawDistance = 60;  // --draw-distance N (15, 60, 120)
-    bool hd = true;         // --hd on|off: high-definition cockpit and menus
+    bool hd = false;        // --hd on|off: high-definition cockpit (experimental; the game's default is on)
     bool reducedSky = true; // --reduced-sky-rotation on|off: the sky turns a quarter as much as in the original
     bool town = true;       // --town on|off: the drives through town enhanced too
     bool retry = false;     // --retry: after a lost race at Bob's, offer to run the same race again

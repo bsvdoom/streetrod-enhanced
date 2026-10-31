@@ -63,3 +63,23 @@ Lépések:
 
 Lásd [AUDIT-2026-10-31.md](AUDIT-2026-10-31.md): a motorháztető-átszínezés heurisztikája (alacsony
 prioritás).
+
+## Később: minden kép HD-ben (felhasználói terv, 2026-10-31)
+
+Az összes eredeti kép cseréje HD-re, a műszerfal mintájára (`assets/hd`, `--hd on`):
+
+- Bob's Drive-In
+- benzinkút
+- garázs
+- az ellenfelek autói (a választó- és bemutatóképek)
+- az autók verseny közben (ellenfél, saját autó nézetei)
+- rendőrautók
+- és a többi képernyő (menük, boltok, dialógusok stb.)
+
+A festék palettaregiszter, ezért az autóképek semleges színben, festékmaszkkal készülnek, és futás közben
+színeződnek (lásd [hd-cockpit-design.md §5.3, §9](superpowers/specs/2026-10-30-hd-cockpit-design.md)).
+
+## Később: Retry-ötletek
+
+Lásd [HANDOFF-retry.md](superpowers/HANDOFF-retry.md), „Ideas”: King-büntetés Retry esetén, Retry slot
+választása a launcherben (`--retry-slot`).

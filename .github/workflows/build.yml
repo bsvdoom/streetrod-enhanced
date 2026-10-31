@@ -61,15 +61,30 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
 
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: src
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
+      # The release notes: this version's section of CHANGELOG.md (tag v0.4.0 -> "## 0.4.0"), then the build notes.
+      - name: Release notes
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v h="## $ver" '$0 == h {on = 1; next} on && /^## / {exit} on' src/CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "CHANGELOG.md has no section '## $ver'" >&2; exit 1; fi
+          cat >> notes.md <<'EOF'
+
+          Built from this tag by GitHub Actions (`tools/ci_build.sh all`); see the build log for this release.
+          The Windows zip needs 64-bit Windows 10 or 11. The Linux zip is built on Ubuntu 26.04 and needs its
+          SDL 3 and wxWidgets 3.2 libraries (`libsdl3-0`, `libwxgtk3.2`); on older systems build from source.
+          The original game files are not included (see README).
+          EOF
+          cat notes.md
+
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
             dist/*.zip
             dist/SHA256SUMS.txt
-          body: |
-            Street Rod Enhanced with the **Retry** option (`--retry`, or "Retry a lost race" in the launcher):
-            after a lost race at Bob's Drive-In, Retry runs the same race again from the state just before it.
-            Built from this tag by GitHub Actions (`tools/ci_build.sh all`); see the build log for this release.
-            The Windows zip needs 64-bit Windows 10 or 11. The Linux zip is built on Ubuntu 26.04 and needs its
-            SDL 3 and wxWidgets 3.2 libraries (`libsdl3-0`, `libwxgtk3.2`); on older systems build from source.
-            The original game files are not included (see README).
+          body_path: notes.md

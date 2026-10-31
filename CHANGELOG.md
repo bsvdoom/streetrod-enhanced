@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+- **Enhanced left side mirror:** the left mirror shows the enhanced, high-resolution road, as the original copies
+  it from the rear-view mirror.
+- **Multithreaded renderer:** the enhanced view is rasterized and resolved on all CPU cores, in bands.
+- **8× draw distance:** `--draw-distance N` (15–120 segments; default 60, 4× the original's 15; launcher:
+  Picture > *Draw distance*), with simplified distant objects and no flickering trees.
+- **Sky fix:** the sky and the horizon turn a quarter as much as in the original and together
+  (`--reduced-sky-rotation on|off`, default on).
+- **Unlocked frame rate:** `--fps N` (default: the display's refresh; 0 = uncapped) and `--vsync on|off`;
+  better frame pacing, also on Windows.
+- **Retry a lost race** (`--retry`, from 0.3.0-retry; launcher: Start > *Retry a lost race*): after a lost race at
+  Bob's Drive-In, Retry runs the same race again from the state just before it.
+- HD cockpit and dashboard (`--hd on`), **experimental**, off in the launcher by default: high-resolution
+  cockpit, gauges with vector needles, wheel, clock face; the pictures ship in `hd/`.
+- Fixes: the road on hilltops, the darkening rear-view mirror at long draw distances.
+
 ## 0.3.0-retry (fork)
 
 - **Retry a lost race** (`--retry`, off by default; launcher: Start > *Retry a lost race*): before each race at
