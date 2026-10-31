@@ -38,8 +38,9 @@ comes along with it: at 8 frames a second, a high-resolution picture only makes 
   * **Motion from the physics.** In a race the cars move in `race_phys_step`, every 12th tick, not once per
     frame (9 ticks). Their road positions are interpolated between physics steps (`enh_phys_step`); the
     camera's lateral position and heading between frames.
-  * **Sky scroll.** The sky and the horizon panorama scroll an eighth of the original's rate (`SKY_SCROLL`):
-    tied to the heading as in the original, they raced across the screen when steering.
+  * **Sky scroll.** The sky and the horizon panorama stand still by default: turning with the heading, they
+    look wrong over the longer road ahead. `--sky-scroll on` turns them with the heading as in the original,
+    at a reduced rate (`SKY_SCROLL`, `enh_raster.c`; at the full rate they raced across the screen).
   * **Largest sizes only.** Road-side shapes always use the most detailed of the original's sizes, scaled by
     depth; signs use the largest pre-scaled picture; the cars their native pictures, scaled to fit the
     original's shrunk views (at most 1.3 times the native size).

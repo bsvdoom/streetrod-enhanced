@@ -147,7 +147,7 @@ static void draw_sky(const Cam *c, bool town, double *ground_y)
     }
     s16 h0 = (s16)trk(TRK_HGT, c->base);
     double hy = horizon_y(h0) + 4.0 * c->hpos;
-    double heading = (s16)trk(TRK_YAW, c->base) + c->hv;
+    double heading = enh_opt.sky_scroll ? (s16)trk(TRK_YAW, c->base) + c->hv : 0;   /* --sky-scroll */
     enh_draw_sky(false, hy, heading);
     *ground_y = hy + 8;
 }

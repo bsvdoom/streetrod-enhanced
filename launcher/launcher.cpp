@@ -177,6 +177,7 @@ LauncherFrame::LauncherFrame()
     drawDistance_->SetSelection(distSel);
     hd_->SetValue(settings::GetInt(SECTION, "HD", 1) != 0);
     town_->SetValue(settings::GetInt(SECTION, "Town", 1) != 0);
+    skyScroll_->SetValue(settings::GetInt(SECTION, "SkyScroll", 0) != 0);
     ShowSounds(sounds_);
     loading_ = false;
     UpdateState();
@@ -348,6 +349,9 @@ wxWindow* LauncherFrame::CreateMainPage(wxWindow* parent) {
     hd_ = new wxCheckBox(pb, wxID_ANY, "High-definition &cockpit and dashboard (HD)");
     hd_->SetToolTip("Draws detailed high-resolution instruments, gauges, and car interior graphics.");
     pictureBox->Add(hd_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
+    skyScroll_ = new wxCheckBox(pb, wxID_ANY, "S&ky and horizon turn with the road (as in the original)");
+    skyScroll_->SetToolTip("Off: the sky and the horizon stand still, which suits the longer draw distance.");
+    pictureBox->Add(skyScroll_, 0, wxLEFT | wxRIGHT | wxTOP, gap);
     town_ = new wxCheckBox(pb, wxID_ANY, "Drives through &town enhanced too");
     pictureBox->Add(town_, 0, wxALL, gap);
     graphics_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateState(); });
@@ -530,6 +534,7 @@ void LauncherFrame::UpdateState() {
     drawDistance_->Enable(enhanced);
     hd_->Enable(enhanced);
     town_->Enable(enhanced);
+    skyScroll_->Enable(enhanced);
     retry_->Enable(!demo_->GetValue());               // the game switches Retry off in the demo
     book_->GetPage(PAGE_MAIN)->Layout();
     if (book_->GetSelection() == PAGE_MAIN) FitPage();  // the notes change the page's size
@@ -572,6 +577,7 @@ void LauncherFrame::Play() {
     options.drawDistance = DRAW_DISTANCES[drawDistance_->GetSelection()];
     options.hd = hd_->GetValue();
     options.town = town_->GetValue();
+    options.skyScroll = skyScroll_->GetValue();
     options.sounds = sounds_;
     wxString error;
     if (!LaunchGame(options, error)) wxMessageBox(error, APP_TITLE, wxOK | wxICON_ERROR, this);
@@ -599,6 +605,7 @@ void LauncherFrame::Save() {
     settings::SetInt(SECTION, "DrawDistance", DRAW_DISTANCES[drawDistance_->GetSelection()]);
     settings::SetInt(SECTION, "HD", hd_->GetValue() ? 1 : 0);
     settings::SetInt(SECTION, "Town", town_->GetValue() ? 1 : 0);
+    settings::SetInt(SECTION, "SkyScroll", skyScroll_->GetValue() ? 1 : 0);
     settings::SaveWindowPosition(SECTION, this);
 }
 

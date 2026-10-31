@@ -143,6 +143,15 @@ void enh_hd_set_needle(int kind, int x0, int y0, int x1, int y1)
     hd_needles[kind].active = true;
 }
 
+/* The dialogs of the frame being composited: the drawn overlays (needles, the wheel's knob, the shifter,
+ * the clock's hands) never go over them. Set by enh_hd_compose. */
+static EnhRect ov_dlg[4];
+static int ov_ndlg, ov_scale = 1;
+static inline bool ov_hidden(int X, int Y)
+{
+    return ov_ndlg && enh_hd_in_rects(ov_dlg, ov_ndlg, X / ov_scale, Y / ov_scale);
+}
+
 /* Anti-aliased capsule line drawing at host resolution */
 static void draw_capsule_line(u32 *xrgb, int W, int H,
                               float x0, float y0, float r0,
@@ -182,6 +191,7 @@ static void draw_capsule_line(u32 *xrgb, int W, int H,
             float alpha = SDL_clamp(r_at_t + 0.5f - dist, 0.0f, 1.0f);
             if (alpha <= 0.0f) continue;
 
+            if (ov_hidden(x, y)) continue;
             u32 bg = row[x];
             u32 br = (bg >> 16) & 0xFF;
             u32 bg_g = (bg >> 8) & 0xFF;
@@ -215,6 +225,7 @@ static void draw_aa_circle(u32 *xrgb, int W, int H, float cx, float cy, float ra
             float alpha = SDL_clamp(radius + 0.5f - dist, 0.0f, 1.0f);
             if (alpha <= 0.0f) continue;
 
+            if (ov_hidden(x, y)) continue;
             u32 bg = row[x];
             u32 br = (bg >> 16) & 0xFF;
             u32 bg_g = (bg >> 8) & 0xFF;
@@ -694,7 +705,52 @@ static void crack_rows(int y_from, int y_to, void *vctx)
     }
 }
 
-void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
+bool enh_hd_cockpit_shown(void)
+{
+    return hd_cockpit_active && has_orig_cockpit;
+}
+
+/* The side mirror (race_road.c: the original copies the rear-view mirror's (248, 22) 32 x 19 to (8, 103)
+ * while it draws the road): the enhanced view's copy, live while the road is drawn, else the last one. */
+void enh_hd_side_mirror(u32 *xrgb, int res_scale, bool live)
+{
+    if (!enh_hd_cockpit_shown()) return;
+    int W = 320 * res_scale;
+    EnhRect dlg[4];
+    int ndlg = enh_hd_dialogs(dlg);
+    bool top_mirror_covered = false;           /* a dialog over the part of the mirror the side mirror shows */
+    for (int i = 0; i < ndlg; i++)
+        if (dlg[i].x0 < 280 && dlg[i].x1 > 248 && dlg[i].y0 < 41 && dlg[i].y1 > 22) top_mirror_covered = true;
+    for (int i = 0; i < ndlg; i++)                 /* a dialog over the side mirror itself: leave it */
+        if (dlg[i].x0 < 40 && dlg[i].x1 > 8 && dlg[i].y0 < 122 && dlg[i].y1 > 103) return;
+
+    int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
+    int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
+    int mw  = 32 * res_scale,  mh  = 19 * res_scale;
+    if (live && !top_mirror_covered) {
+        if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
+            for (int y = 0; y < mh; y++) {
+                memcpy(mirror_cache + y * mw,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+                memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+            }
+            mirror_cache_valid = true;
+            mirror_cache_mw = mw;
+            mirror_cache_mh = mh;
+        }
+    } else if (mirror_cache_valid && mirror_cache_mw == mw && mirror_cache_mh == mh) {
+        for (int y = 0; y < mh; y++) {
+            memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                   mirror_cache + y * mw,
+                   (size_t)mw * sizeof(u32));
+        }
+    }
+}
+
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale)
 {
     ensure_loaded();
     if (!hd_opt_enabled || !img_cockpit.pixels || !has_orig_cockpit) return;
@@ -721,36 +777,9 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
 
     EnhRect dlg[4];
     int ndlg = enh_hd_dialogs(dlg);
-    bool top_mirror_covered = false;           /* a dialog over the part of the mirror the side mirror shows */
-    for (int i = 0; i < ndlg; i++)
-        if (dlg[i].x0 < 280 && dlg[i].x1 > 248 && dlg[i].y0 < 41 && dlg[i].y1 > 22) top_mirror_covered = true;
-
-    /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
-    int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
-    int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
-    int mw  = 32 * res_scale,  mh  = 19 * res_scale;
-    if (live && !top_mirror_covered) {
-        if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
-            for (int y = 0; y < mh; y++) {
-                memcpy(mirror_cache + y * mw,
-                       xrgb + (size_t)(sy0 + y) * W + sx0,
-                       (size_t)mw * sizeof(u32));
-                memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
-                       xrgb + (size_t)(sy0 + y) * W + sx0,
-                       (size_t)mw * sizeof(u32));
-            }
-            mirror_cache_valid = true;
-            mirror_cache_mw = mw;
-            mirror_cache_mh = mh;
-        }
-    } else if (mirror_cache_valid && mirror_cache_mw == mw && mirror_cache_mh == mh) {
-        for (int y = 0; y < mh; y++) {
-            memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
-                   mirror_cache + y * mw,
-                   (size_t)mw * sizeof(u32));
-        }
-    }
-
+    for (int i = 0; i < ndlg; i++) ov_dlg[i] = dlg[i];
+    ov_ndlg = ndlg;
+    ov_scale = res_scale;
     for (int X = 0; X < W; X++) {
         int hx = (X * cw) / W;
         hx_of[X] = hx < cw ? hx : cw - 1;
@@ -826,6 +855,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
             for (int px = 0; px < pw; px++) {
                 int X = px0 + px;
                 if (X < 0 || X >= W) continue;
+                if (ov_hidden(X, Y)) continue;
                 u32 pp = p_row[px];
                 u32 a = (pp >> 24) & 0xFF;
                 if (a == 0) continue;
@@ -863,6 +893,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
             for (int kx = 0; kx < kw; kx++) {
                 int X = kx0 + kx;
                 if (X < 0 || X >= W) continue;
+                if (ov_hidden(X, Y)) continue;
                 u32 kp = k_row[kx];
                 u32 a = (kp >> 24) & 0xFF;
                 if (a == 0) continue;

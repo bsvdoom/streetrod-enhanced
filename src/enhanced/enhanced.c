@@ -11,7 +11,7 @@
 #include "host.h"
 #include "platform/ega.h"
 
-EnhOptions enh_opt = { false, 1, ENH_DEFAULT_AA, ENH_DEFAULT_MOTION_DELAY, true, ENH_DEFAULT_DRAW_DISTANCE };
+EnhOptions enh_opt = { false, 1, ENH_DEFAULT_AA, ENH_DEFAULT_MOTION_DELAY, true, ENH_DEFAULT_DRAW_DISTANCE, false };
 
 /* A smoothly interpolated series of samples: [0] = the newest, [1] and [2] the ones before. */
 #define SER_N 5
@@ -74,6 +74,7 @@ void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town, 
 }
 
 bool enh_enabled(void) { return enh_opt.enabled; }
+void enh_set_sky_scroll(bool on) { enh_opt.sky_scroll = on; }
 int  enh_res_scale(void) { return enh_opt.res_scale; }
 
 void enh_race_begin(void)
@@ -226,7 +227,8 @@ bool enh_compose(u32 *xrgb, const u32 rgb[16])
     int y_end = SDL_min(ENH_VIEW_Y1, ega_line_compare());
     enh_raster_dispatch_and_resolve(xrgb, rgb, 16, shown_start, y_end);
     Uint64 t2 = SDL_GetTicksNS();
-    enh_hd_compose(xrgb, rgb, enh_opt.res_scale, true);
+    enh_hd_side_mirror(xrgb, enh_opt.res_scale, true);
+    enh_hd_compose(xrgb, rgb, enh_opt.res_scale);
     Uint64 t3 = SDL_GetTicksNS();
     if (trace) {
         static double last_pos;

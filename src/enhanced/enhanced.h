@@ -23,6 +23,9 @@
  * aa 1..4, motion_delay 0..100, town = the town cruise is enhanced too, draw_distance 15..120. */
 void enh_init(bool enabled, int res_scale, int aa, int motion_delay, bool town, int draw_distance);
 bool enh_enabled(void);
+/* --sky-scroll: the sky and the horizon turn with the heading, as in the original (default off: with the
+ * longer road ahead a turning horizon looks wrong) */
+void enh_set_sky_scroll(bool on);
 int  enh_res_scale(void);
 
 /* race_run (race_drive.c): the road view starts (before road_race_init) and ends (the frame loop left). */

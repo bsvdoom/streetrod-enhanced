@@ -36,9 +36,14 @@ const u8 *enh_hd_window(void);
 const u8 *enh_hd_orig_cockpit(void);
 
 /* Overlays the HD cockpit on xrgb according to Section 5.1 */
-/* live: the road view is drawn this frame (the side mirror copies it); otherwise the side mirror keeps the
- * last copy, as the original only copies it while it draws the road */
-void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live);
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale);
+
+/* The race cockpit is shown (set_cockpit until a full-screen picture), with or without HD. */
+bool enh_hd_cockpit_shown(void);
+/* The side mirror in the enhanced view's resolution (with or without HD): live = the road view is drawn
+ * this frame and the mirror copies it; otherwise it keeps the last copy, as the original only copies it
+ * while it draws the road. */
+void enh_hd_side_mirror(u32 *xrgb, int res_scale, bool live);
 
 /* show_picture: a full-screen picture ends the cockpit */
 void enh_hd_set_screen_pic(s16 id, u16 seg, u16 off);
