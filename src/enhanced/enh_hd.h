@@ -15,6 +15,7 @@ void enh_hd_clear_cockpit(void);
 bool enh_hd_has_cockpit(void);
 void enh_hd_set_clock(u16 seg, u16 off, int dx, int dy);
 void enh_hd_set_gate(u16 seg, u16 off, int dx, int dy);
+void enh_hd_set_wheel_knob(int x, int y);       /* wheel_draw: the red knob on the rim (screen x, y) */
 void enh_hd_set_wheel(int idx);                  /* wheel_draw: 0 straight, 1 turned left, 2 right */
 void enh_hd_set_knob_type(int type);
 void enh_hd_set_knob_pos(int x, int y);
@@ -49,4 +50,6 @@ void enh_hd_sky_clear_span(int j, int i0, int i1);
 void enh_hd_sky_clear_pixel(int j, int i);
 u32  enh_hd_sky_pixel(int j, int i);
 u32 *enh_hd_sky_buffer(void);
+const u8 *enh_hd_sky_live(void);                /* per sample row: 0 = no HD sky in it (skip it) */
+void enh_hd_sky_copy_row(int j, int from);
 bool enh_hd_has_sky(void);

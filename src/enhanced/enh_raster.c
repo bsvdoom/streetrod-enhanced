@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "host.h"
 #include "platform/ega.h"
 
 #define MAX_CMDS 65536
@@ -285,23 +286,39 @@ static inline void sheet_row(int j, int sy, double shift)
     }
 }
 
+/* Sample row j from sheet row sy scrolled by shift, the HD sky row with it. The res scale x aa sample rows
+ * of one original row are the same: a row equal to the one above (in this band) is copied, not sampled. */
+static inline void sky_sample_row(int j, int j_start, int sy, double shift, bool town, int *last_sy,
+                                  double *last_shift)
+{
+    EnhBuf *b = &enh_buf;
+    if (j > j_start && sy == *last_sy && shift == *last_shift) {
+        memcpy(b->px + (size_t)j * b->w, b->px + (size_t)(j - 1) * b->w, (size_t)b->w);
+        enh_hd_sky_copy_row(j, j - 1);
+        return;
+    }
+    sheet_row(j, sy, shift);
+    enh_hd_sky_row(j, sy, shift, town);
+    *last_sy = sy;
+    *last_shift = shift;
+}
+
 static inline void render_sky_band(const RenderCmd *cmd, int j_start, int j_end)
 {
     EnhBuf *b = &enh_buf;
+    int last_sy = -1;
+    double last_shift = 0;
     if (cmd->sky.town) {
         for (int j = j_start; j < j_end; j++) {
             double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;
-            if (y < 0x2F) {
-                sheet_row(j, 0x66 + (int)floor(y - 0x12), 0);
-                enh_hd_sky_row(j, 0x66 + (int)floor(y - 0x12), 0, true);
-            }
-            else if (y < 0x3F) {
-                sheet_row(j, 0xA3 + (int)floor(y - 0x2F), 0);
-                enh_hd_sky_row(j, 0xA3 + (int)floor(y - 0x2F), 0, true);
-            }
+            if (y < 0x2F)
+                sky_sample_row(j, j_start, 0x66 + (int)floor(y - 0x12), 0, true, &last_sy, &last_shift);
+            else if (y < 0x3F)
+                sky_sample_row(j, j_start, 0xA3 + (int)floor(y - 0x2F), 0, true, &last_sy, &last_shift);
             else {
                 memset(b->px + (size_t)j * b->w, COL_ROAD, (size_t)b->w);
                 enh_hd_sky_clear_span(j, 0, b->w);
+                last_sy = -1;
             }
         }
     } else {
@@ -309,17 +326,16 @@ static inline void render_sky_band(const RenderCmd *cmd, int j_start, int j_end)
         double heading = cmd->sky.heading;
         for (int j = j_start; j < j_end; j++) {
             double y = ENH_VIEW_Y0 + (j + 0.5) / b->sa;
-            if (y < hy - 12) {
-                sheet_row(j, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading);
-                enh_hd_sky_row(j, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading, false);
-            }
-            else if (y < hy + 8) {
-                sheet_row(j, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading);
-                enh_hd_sky_row(j, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading, false);
-            }
+            if (y < hy - 12)
+                sky_sample_row(j, j_start, (int)floor(y + 0xA6 - hy), 2.0 * SKY_SCROLL * heading, false,
+                               &last_sy, &last_shift);
+            else if (y < hy + 8)
+                sky_sample_row(j, j_start, 0xA3 + (int)floor(y - (hy - 12)), 4.0 * SKY_SCROLL * heading, false,
+                               &last_sy, &last_shift);
             else {
                 memset(b->px + (size_t)j * b->w, COL_GRASS, (size_t)b->w);
                 enh_hd_sky_clear_span(j, 0, b->w);
+                last_sy = -1;
             }
         }
     }
@@ -442,6 +458,7 @@ static void resolve_band(int y_from, int y_to)
     u16 page = frame_ctx.page;
     u32 *xrgb = frame_ctx.xrgb;
     const u32 *sky_buf = enh_hd_has_sky() ? enh_hd_sky_buffer() : NULL;
+    const u8 *sky_live = enh_hd_sky_live();
     const float *lr = frame_ctx.lr;
     const float *lg = frame_ctx.lg;
     const float *lb = frame_ctx.lb;
@@ -459,7 +476,8 @@ static void resolve_band(int y_from, int y_to)
 
             for (int j = 0; j < aa && j < 8; j++) {
                 sample_rows[j] = src + (size_t)j * b->w;
-                sky_rows[j] = sky_buf ? sky_buf + (size_t)(base_j + j) * b->w : NULL;
+                sky_rows[j] = sky_buf && sky_live && sky_live[base_j + j] ? sky_buf + (size_t)(base_j + j) * b->w
+                                                                          : NULL;
             }
 
             for (int x = 0; x < 320; x++) {
@@ -550,16 +568,42 @@ static void worker_exec(int worker_id)
     }
 }
 
+/* a job for enh_parallel_rows instead of the frame's commands */
+static void (*job_fn)(int r0, int r1, void *ctx);
+static void *job_ctx;
+static int job_rows;
+
+static void job_part(int worker_id)
+{
+    job_fn(worker_id * job_rows / num_workers, (worker_id + 1) * job_rows / num_workers, job_ctx);
+}
+
 static int SDLCALL worker_thread_fn(void *data)
 {
     int worker_id = (int)(intptr_t)data;
     while (workers_running) {
         SDL_WaitSemaphore(sem_start[worker_id]);
         if (!workers_running) break;
-        worker_exec(worker_id);
+        if (job_fn) job_part(worker_id);
+        else worker_exec(worker_id);
         SDL_SignalSemaphore(sem_done[worker_id]);
     }
     return 0;
+}
+
+void enh_parallel_rows(int rows, void (*fn)(int r0, int r1, void *ctx), void *ctx)
+{
+    if (!workers_running || num_workers <= 1) {
+        fn(0, rows, ctx);
+        return;
+    }
+    job_fn = fn;
+    job_ctx = ctx;
+    job_rows = rows;
+    for (int i = 1; i < num_workers; i++) SDL_SignalSemaphore(sem_start[i]);
+    job_part(0);
+    for (int i = 1; i < num_workers; i++) SDL_WaitSemaphore(sem_done[i]);
+    job_fn = NULL;
 }
 
 void enh_raster_init(void)
@@ -582,7 +626,8 @@ void enh_raster_init(void)
         SDL_snprintf(name, sizeof(name), "enh_worker_%d", i);
         worker_threads[i] = SDL_CreateThread(worker_thread_fn, name, (void *)(intptr_t)i);
     }
-    atexit(enh_raster_shutdown);
+    host_set_shutdown_handler(enh_raster_shutdown);   /* the workers end before SDL_Quit */
+    atexit(enh_raster_shutdown);                     /* and on any other way out (it runs once) */
 }
 
 void enh_raster_shutdown(void)

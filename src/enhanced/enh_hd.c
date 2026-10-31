@@ -61,6 +61,16 @@ static int  hd_knob_type = 2;
 static int  hd_knob_x = 0, hd_knob_y = 0;
 static bool hd_knob_active = false;
 
+static int  hd_wheel_knob_x, hd_wheel_knob_y;
+static bool hd_wheel_knob = false;
+
+void enh_hd_set_wheel_knob(int x, int y)
+{
+    hd_wheel_knob_x = x;
+    hd_wheel_knob_y = y;
+    hd_wheel_knob = true;
+}
+
 void enh_hd_set_wheel(int idx)
 {
     hd_wheel = idx >= 0 && idx <= 2 ? idx : 0;
@@ -220,6 +230,7 @@ static void draw_aa_circle(u32 *xrgb, int W, int H, float cx, float cy, float ra
 
 /* HD sky sampling buffer, sized to enh_buf (w * h) */
 static u32 *hd_sky_buf = NULL;
+static u8 *hd_sky_live = NULL;          /* per sample row: 1 = it may hold HD sky (the ground rows hold none) */
 static int hd_sky_w = 0, hd_sky_h = 0, hd_sky_sa = 0;
 
 static u32 *load_image(const char *rel_path, int *w, int *h)
@@ -371,6 +382,7 @@ void enh_hd_set_cockpit(u16 seg, u16 off)
     hd_crashed = false;
     hd_clock = false;
     hd_wheel = 0;
+    hd_wheel_knob = false;
     hd_knob_active = false;
     hd_needles[0].active = hd_needles[1].active = false;
     hd_hands[0].active = hd_hands[1].active = false;
@@ -514,75 +526,33 @@ bool enh_hd_in_rects(const EnhRect *r, int n, int x, int y)
     return false;
 }
 
-void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
-{
-    ensure_loaded();
-    if (!hd_opt_enabled || !img_cockpit.pixels || !has_orig_cockpit) return;
-
-    int W = 320 * res_scale;
-    int line_compare = ega_line_compare();
-    u16 start_addr = ega_start();
-    const u8 *p0 = ega_plane(0);
-    const u8 *p1 = ega_plane(1);
-    const u8 *p2 = ega_plane(2);
-    const u8 *p3 = ega_plane(3);
-
-    int cw = img_cockpit.w, ch = img_cockpit.h;
-
-    /* Body paint colors from EGA palette registers 6 and 7 */
-    u32 c6_raw = rgb ? rgb[6] : 0x0000AA;
-    u32 c7_raw = rgb ? rgb[7] : 0x5555FF;
-    int c6_r = (int)((c6_raw >> 16) & 0xFF);
-    int c6_g = (int)((c6_raw >> 8) & 0xFF);
-    int c6_b = (int)(c6_raw & 0xFF);
-    int c7_r = (int)((c7_raw >> 16) & 0xFF);
-    int c7_g = (int)((c7_raw >> 8) & 0xFF);
-    int c7_b = (int)(c7_raw & 0xFF);
-
+/* enh_hd_compose's state for the parallel parts */
+typedef struct {
+    u32 *xrgb;
+    int W, res_scale, line_compare;
+    u16 start_addr;
+    const u8 *p[4];
+    int cw, ch;
+    int c6[3], c7[3];          /* the paint: palette registers 6 and 7 */
     EnhRect dlg[4];
-    int ndlg = enh_hd_dialogs(dlg);
-    bool top_mirror_covered = false;           /* a dialog over the part of the mirror the side mirror shows */
-    for (int i = 0; i < ndlg; i++)
-        if (dlg[i].x0 < 280 && dlg[i].x1 > 248 && dlg[i].y0 < 41 && dlg[i].y1 > 22) top_mirror_covered = true;
+    int ndlg;
+} ComposeCtx;
 
-    /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
-    int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
-    int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
-    int mw  = 32 * res_scale,  mh  = 19 * res_scale;
-    if (live && !top_mirror_covered) {
-        if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
-            for (int y = 0; y < mh; y++) {
-                memcpy(mirror_cache + y * mw,
-                       xrgb + (size_t)(sy0 + y) * W + sx0,
-                       (size_t)mw * sizeof(u32));
-                memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
-                       xrgb + (size_t)(sy0 + y) * W + sx0,
-                       (size_t)mw * sizeof(u32));
-            }
-            mirror_cache_valid = true;
-            mirror_cache_mw = mw;
-            mirror_cache_mh = mh;
-        }
-    } else if (mirror_cache_valid && mirror_cache_mw == mw && mirror_cache_mh == mh) {
-        for (int y = 0; y < mh; y++) {
-            memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
-                   mirror_cache + y * mw,
-                   (size_t)mw * sizeof(u32));
-        }
-    }
+/* Output column / row -> cockpit picture column / row: once per frame, not per output pixel. */
+static int hx_of[320 * ENH_MAX_RES_SCALE], hy_of[190 * ENH_MAX_RES_SCALE];
 
-    /* Output column / row -> cockpit picture column / row: once per frame, not per output pixel. */
-    static int hx_of[320 * ENH_MAX_RES_SCALE], hy_of[190 * ENH_MAX_RES_SCALE];
-    for (int X = 0; X < W; X++) {
-        int hx = (X * cw) / W;
-        hx_of[X] = hx < cw ? hx : cw - 1;
-    }
-    for (int Y = 0; Y < 190 * res_scale; Y++) {
-        int hy = (Y * ch) / (190 * res_scale);
-        hy_of[Y] = hy < ch ? hy : ch - 1;
-    }
-
-    for (int y = 0; y < 190; y++) {
+/* the cockpit rows y_from..y_to-1 (original rows) */
+static void compose_rows(int y_from, int y_to, void *vctx)
+{
+    const ComposeCtx *c = vctx;
+    u32 *xrgb = c->xrgb;
+    int W = c->W, res_scale = c->res_scale, line_compare = c->line_compare, cw = c->cw, ch = c->ch;
+    u16 start_addr = c->start_addr;
+    const u8 *p0 = c->p[0], *p1 = c->p[1], *p2 = c->p[2], *p3 = c->p[3];
+    int c6_r = c->c6[0], c6_g = c->c6[1], c6_b = c->c6[2], c7_r = c->c7[0], c7_g = c->c7[1], c7_b = c->c7[2];
+    const EnhRect *dlg = c->dlg;
+    int ndlg = c->ndlg;
+    for (int y = y_from; y < y_to; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
         /* Dynamic hood/fender recoloring applies right of this column on rows 96..113 */
@@ -691,6 +661,109 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
         }
     }
 
+}
+
+/* the crack layer over output rows of original rows y_from..y_to-1 */
+static void crack_rows(int y_from, int y_to, void *vctx)
+{
+    const ComposeCtx *c = vctx;
+    int W = c->W, res_scale = c->res_scale;
+    int cw2 = img_crash.w, ch2 = img_crash.h;
+    for (int Y = y_from * res_scale; Y < y_to * res_scale; Y++) {
+        int y = Y / res_scale;
+        int cy = (Y * ch2) / (190 * res_scale);
+        if (cy >= ch2) cy = ch2 - 1;
+        const u32 *c_row = img_crash.pixels + (size_t)cy * cw2;
+        u32 *out_row = c->xrgb + (size_t)Y * W;
+        for (int X = 0; X < W; X++) {
+            int x = X / res_scale;
+            if (enh_hd_in_rects(c->dlg, c->ndlg, x, y)) continue;   /* never over a dialog */
+            int cx = (X * cw2) / W;
+            if (cx >= cw2) cx = cw2 - 1;
+            u32 cp = c_row[cx];
+            u32 a = (cp >> 24) & 0xFF;
+            if (a == 0) continue;
+            u32 bg = out_row[X];
+            u32 br = (bg >> 16) & 0xFF, bg_g = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+            u32 cr = (cp >> 16) & 0xFF, cg = (cp >> 8) & 0xFF, cb = cp & 0xFF;
+            u32 nr = (cr * a + br * (255 - a)) / 255;
+            u32 ng = (cg * a + bg_g * (255 - a)) / 255;
+            u32 nb = (cb * a + bb * (255 - a)) / 255;
+            out_row[X] = (nr << 16) | (ng << 8) | nb;
+        }
+    }
+}
+
+void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
+{
+    ensure_loaded();
+    if (!hd_opt_enabled || !img_cockpit.pixels || !has_orig_cockpit) return;
+
+    int W = 320 * res_scale;
+    int line_compare = ega_line_compare();
+    u16 start_addr = ega_start();
+    const u8 *p0 = ega_plane(0);
+    const u8 *p1 = ega_plane(1);
+    const u8 *p2 = ega_plane(2);
+    const u8 *p3 = ega_plane(3);
+
+    int cw = img_cockpit.w, ch = img_cockpit.h;
+
+    /* Body paint colors from EGA palette registers 6 and 7 */
+    u32 c6_raw = rgb ? rgb[6] : 0x0000AA;
+    u32 c7_raw = rgb ? rgb[7] : 0x5555FF;
+    int c6_r = (int)((c6_raw >> 16) & 0xFF);
+    int c6_g = (int)((c6_raw >> 8) & 0xFF);
+    int c6_b = (int)(c6_raw & 0xFF);
+    int c7_r = (int)((c7_raw >> 16) & 0xFF);
+    int c7_g = (int)((c7_raw >> 8) & 0xFF);
+    int c7_b = (int)(c7_raw & 0xFF);
+
+    EnhRect dlg[4];
+    int ndlg = enh_hd_dialogs(dlg);
+    bool top_mirror_covered = false;           /* a dialog over the part of the mirror the side mirror shows */
+    for (int i = 0; i < ndlg; i++)
+        if (dlg[i].x0 < 280 && dlg[i].x1 > 248 && dlg[i].y0 < 41 && dlg[i].y1 > 22) top_mirror_covered = true;
+
+    /* Side mirror: copy high-res rear-view mirror cutout from (248*S, 22*S) to (8*S, 103*S) */
+    int sx0 = 248 * res_scale, sy0 = 22 * res_scale;
+    int dx0 = 8 * res_scale,   dy0 = 103 * res_scale;
+    int mw  = 32 * res_scale,  mh  = 19 * res_scale;
+    if (live && !top_mirror_covered) {
+        if (mw * mh <= (int)(sizeof(mirror_cache) / sizeof(mirror_cache[0]))) {
+            for (int y = 0; y < mh; y++) {
+                memcpy(mirror_cache + y * mw,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+                memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                       xrgb + (size_t)(sy0 + y) * W + sx0,
+                       (size_t)mw * sizeof(u32));
+            }
+            mirror_cache_valid = true;
+            mirror_cache_mw = mw;
+            mirror_cache_mh = mh;
+        }
+    } else if (mirror_cache_valid && mirror_cache_mw == mw && mirror_cache_mh == mh) {
+        for (int y = 0; y < mh; y++) {
+            memcpy(xrgb + (size_t)(dy0 + y) * W + dx0,
+                   mirror_cache + y * mw,
+                   (size_t)mw * sizeof(u32));
+        }
+    }
+
+    for (int X = 0; X < W; X++) {
+        int hx = (X * cw) / W;
+        hx_of[X] = hx < cw ? hx : cw - 1;
+    }
+    for (int Y = 0; Y < 190 * res_scale; Y++) {
+        int hy = (Y * ch) / (190 * res_scale);
+        hy_of[Y] = hy < ch ? hy : ch - 1;
+    }
+
+    ComposeCtx cc = { xrgb, W, res_scale, line_compare, start_addr, { p0, p1, p2, p3 }, cw, ch,
+                      { c6_r, c6_g, c6_b }, { c7_r, c7_g, c7_b }, { dlg[0], dlg[1], dlg[2], dlg[3] }, ndlg };
+    enh_parallel_rows(190, compose_rows, &cc);
+
     /* Render smooth anti-aliased vector needles over the clean HD dials */
     float sc = (float)res_scale;
     float r_tip  = 1.1f * (sc / 4.0f);
@@ -712,6 +785,15 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
         /* Center hub chrome cap and dark pin */
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_hub, 0xD4D8E0);
         draw_aa_circle(xrgb, W, 200 * res_scale, x1, y1, r_pin, 0x24262A);
+    }
+
+    /* The wheel's knob (shape_draw_dot, 6 x 5 px centred on (x + 1, y + 0.5)): it shows which way the wheel
+     * is turned; the HD cockpit covers the original's */
+    if (hd_wheel_knob && !hd_crashed) {
+        float kx = (hd_wheel_knob_x + 1.0f) * sc, ky = (hd_wheel_knob_y + 0.5f) * sc;
+        draw_aa_circle(xrgb, W, 200 * res_scale, kx, ky, 3.0f * sc, 0x5A1010);
+        draw_aa_circle(xrgb, W, 200 * res_scale, kx, ky, 2.5f * sc, 0xFF5555);
+        draw_aa_circle(xrgb, W, 200 * res_scale, kx - 0.7f * sc, ky - 0.7f * sc, 0.8f * sc, 0xFFB0B0);
     }
 
     /* The clock's hands over the HD face (automatic cars) */
@@ -801,36 +883,7 @@ void enh_hd_compose(u32 *xrgb, const u32 rgb[16], int res_scale, bool live)
     }
 
     /* Render HD cracked windshield overlay on crash */
-    if (hd_crashed && img_crash.pixels != NULL) {
-        int cw2 = img_crash.w, ch2 = img_crash.h;
-        for (int Y = 0; Y < 190 * res_scale; Y++) {
-            int y = Y / res_scale;
-            int cy = (Y * ch2) / (190 * res_scale);
-            if (cy >= ch2) cy = ch2 - 1;
-            const u32 *c_row = img_crash.pixels + (size_t)cy * cw2;
-            u32 *out_row = xrgb + (size_t)Y * W;
-
-            for (int X = 0; X < W; X++) {
-                int x = X / res_scale;
-
-                if (enh_hd_in_rects(dlg, ndlg, x, y)) continue;   /* never over a dialog */
-
-                int cx = (X * cw2) / W;
-                if (cx >= cw2) cx = cw2 - 1;
-                u32 cp = c_row[cx];
-                u32 a = (cp >> 24) & 0xFF;
-                if (a == 0) continue;
-
-                u32 bg = out_row[X];
-                u32 br = (bg >> 16) & 0xFF, bg_g = (bg >> 8) & 0xFF, bb = bg & 0xFF;
-                u32 cr = (cp >> 16) & 0xFF, cg = (cp >> 8) & 0xFF, cb = cp & 0xFF;
-                u32 nr = (cr * a + br * (255 - a)) / 255;
-                u32 ng = (cg * a + bg_g * (255 - a)) / 255;
-                u32 nb = (cb * a + bb * (255 - a)) / 255;
-                out_row[X] = (nr << 16) | (ng << 8) | nb;
-            }
-        }
-    }
+    if (hd_crashed && img_crash.pixels != NULL) enh_parallel_rows(190, crack_rows, &cc);
 
     /* Redraw mouse cursor on top of all HD composited layers (left mirror, dials, needles, shifter, cracks) */
     enh_hd_draw_cursor(xrgb, rgb, res_scale);
@@ -841,13 +894,17 @@ void enh_hd_sky_begin(int w, int h, int sa)
     ensure_loaded();
     if (!enh_hd_has_sky()) {                   /* nothing to sample: no buffer, the spans skip it */
         SDL_free(hd_sky_buf);
+        SDL_free(hd_sky_live);
         hd_sky_buf = NULL;
+        hd_sky_live = NULL;
         hd_sky_w = hd_sky_h = 0;
         return;
     }
     if (hd_sky_w != w || hd_sky_h != h) {
         SDL_free(hd_sky_buf);
+        SDL_free(hd_sky_live);
         hd_sky_buf = SDL_malloc((size_t)w * (size_t)h * sizeof(u32));
+        hd_sky_live = SDL_calloc((size_t)h, 1);
         hd_sky_w = w;
         hd_sky_h = h;
         if (hd_sky_buf) memset(hd_sky_buf, 0, (size_t)w * (size_t)h * sizeof(u32));
@@ -857,7 +914,7 @@ void enh_hd_sky_begin(int w, int h, int sa)
 
 bool enh_hd_sky_row(int j, int sy, double shift, bool town)
 {
-    if (!hd_opt_enabled || !hd_sky_buf || j < 0 || j >= hd_sky_h) return false;
+    if (!hd_opt_enabled || !hd_sky_buf || !hd_sky_live || j < 0 || j >= hd_sky_h) return false;
 
     const ImageHD *sheet = town ? (&img_sheets_town) : (&img_sheets_race);
     if (!sheet->pixels) sheet = town ? (&img_sheets_race) : (&img_sheets_town);
@@ -871,6 +928,7 @@ bool enh_hd_sky_row(int j, int sy, double shift, bool town)
     if (hy >= sh) hy = sh - 1;
     const u32 *src = sheet->pixels + (size_t)hy * sw;
     u32 *dst = hd_sky_buf + (size_t)j * hd_sky_w;
+    hd_sky_live[j] = 1;
 
     for (int i = 0; i < hd_sky_w; i++) {
         double x = (i + 0.5) / hd_sky_sa - shift;
@@ -884,17 +942,18 @@ bool enh_hd_sky_row(int j, int sy, double shift, bool town)
 
 void enh_hd_sky_clear_span(int j, int i0, int i1)
 {
-    if (!hd_sky_buf || j < 0 || j >= hd_sky_h || i1 <= i0) return;
+    if (!hd_sky_buf || !hd_sky_live || j < 0 || j >= hd_sky_h || i1 <= i0 || !hd_sky_live[j]) return;
     if (i0 < 0) i0 = 0;
     if (i1 > hd_sky_w) i1 = hd_sky_w;
     if (i1 > i0) {
         memset(hd_sky_buf + (size_t)j * hd_sky_w + i0, 0, (size_t)(i1 - i0) * sizeof(u32));
+        if (i0 == 0 && i1 == hd_sky_w) hd_sky_live[j] = 0;          /* the whole row: no sky left */
     }
 }
 
 void enh_hd_sky_clear_pixel(int j, int i)
 {
-    if (!hd_sky_buf || j < 0 || j >= hd_sky_h || i < 0 || i >= hd_sky_w) return;
+    if (!hd_sky_buf || !hd_sky_live || j < 0 || j >= hd_sky_h || i < 0 || i >= hd_sky_w || !hd_sky_live[j]) return;
     hd_sky_buf[j * hd_sky_w + i] = 0;
 }
 
@@ -907,6 +966,18 @@ u32 enh_hd_sky_pixel(int j, int i)
 u32 *enh_hd_sky_buffer(void)
 {
     return hd_sky_buf;
+}
+
+const u8 *enh_hd_sky_live(void)
+{
+    return hd_sky_live;
+}
+
+void enh_hd_sky_copy_row(int j, int from)
+{
+    if (!hd_sky_buf || !hd_sky_live || j < 0 || j >= hd_sky_h || from < 0 || from >= hd_sky_h) return;
+    memcpy(hd_sky_buf + (size_t)j * hd_sky_w, hd_sky_buf + (size_t)from * hd_sky_w, (size_t)hd_sky_w * sizeof(u32));
+    hd_sky_live[j] = hd_sky_live[from];
 }
 
 bool enh_hd_has_sky(void)

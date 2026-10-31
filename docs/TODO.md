@@ -25,16 +25,39 @@ Valószínű okok, fontossági sorrendben:
 5. Kisebbek: minden dolgozó szál végigmegy mind a ~10 000 parancson; az ég-lapok képkockánkénti újraolvasása;
    a HD ég-puffer (u32 mintánként) minden kitöltésnél külön memset; Proton alatt DXVK.
 
+Második mérés (felhasználó, maximális beállítás): 40–42 FPS VSync-kel, 50 VSync nélkül; egy szál 70–80%, a
+többi kb. 33%. Fejetlen mérés res-scale 8, AA 2 (2560 × 1600, 6,9 M minta), látótáv 120, 12 mag:
+
+| | előtte | utána |
+|---|---|---|
+| raszter + resolve | 15,9 ms | 4,9 ms |
+| HD műszerfal | 7,0 ms | 1,9 ms |
+| képkocka (VSync nélkül) | 28 ms, 36 FPS | 12,3 ms, 81 FPS |
+
+res-scale 4 + AA 4 (ugyanannyi minta): kb. 120 FPS.
+
 Lépések:
 
-1. **Mérés**: szakaszonkénti időmérés a fő szálon (játék, EGA, rögzítés, raszter, HD, feltöltés,
-   megjelenítés, várakozás), `SR_DEBUG_FPS`-sel kiírva.
-2. **Ütemezés**: a korlát-ütközés kész; maradt: a várakozás alvással menjen, csak a végén pörögjön.
-3. **Párhuzamosítás**: EGA-felnagyítás és HD műszerfal (pixelenként független) ugyanazon a szálkészleten,
-   sávokra osztva.
-4. **Átfedés**: a következő képkocka összerakása fusson a megjelenítés alatt (kettős puffer vagy render-szál).
-5. **Hosszabb távon**: összerakás GPU-n (EGA-réteg, HD műszerfal, felnagyítás shaderrel); a CPU csak az alacsony
-   felbontású rétegeket tölti fel. Maximális res/AA mellett csak így reális a 165 FPS.
+1. **[kész] Ég-sorok:** egy eredeti képsor res × AA mintasora azonos; eddig mind mintánként (osztás, `floor`,
+   maradék, két képből) számolódott, és ez a felső sávokat kapó szálakra esett (12 ms vs. 0,8 ms). Most az
+   azonos sort másolja (`render_sky_band`).
+2. **[kész] HD ég-puffer csak az ég-sorokban:** soronkénti jelző; a talaj-sorokban nincs törlés és olvasás.
+3. **[kész] HD műszerfal és repedés-réteg párhuzamosan:** `enh_parallel_rows` a szálkészleten, sávokra osztva.
+4. **[kész] A dolgozó szálak az `SDL_Quit` előtt állnak le** (`host_set_shutdown_handler`): egy t2-futás egyszer
+   szegmentálási hibával ért véget kilépéskor; nem reprodukálható, de az `atexit` az `SDL_Quit` után futott.
+5. **Maradék a fő szálon** (res 8): EGA-felnagyítás kb. 1 ms, textúra-feltöltés 1,7 ms, megjelenítés 2,1 ms
+   (fejetlen, szoftveres renderer), parancsok rögzítése 0,5 ms. Következő lépések: EGA-felnagyítás
+   párhuzamosan; a várakozás alvással (csak a végén pörögjön); átfedés (a következő képkocka a megjelenítés
+   alatt); hosszabb távon összerakás GPU-n.
+
+## HD műszerfal: későbbi javítások (felhasználói teszt, 2026-10-31)
+
+- **Kormány:** az elfordított állások (`wheel_left/right.png`) még nem az igaziak; csak a küllők egy része
+  forog, az alsó ív nyoma ott marad.
+- **Motorháztető:** még nem az igazi (a HD motorháztető alakja/átszínezése).
+- **Váltó:** a HD váltólap alatt ott maradt a régi (EGA) váltódoboz is, és mintha más felbontásban lenne;
+  automata és kézi váltónál is (képernyőkép: a HD lap balra-fent, mögötte a régi kulissza és gomb).
+- **A végén mindent minden felbontáson ellenőrizni** (res-scale 2..8, AA 1..4).
 
 ## Nyitott tételek az átvizsgálásból
 

@@ -47,6 +47,9 @@ typedef struct {
 } EnhBuf;
 extern EnhBuf enh_buf;
 void enh_raster_init(void);
+/* rows 0..rows-1 split over the worker pool (fn(r0, r1, ctx) per part); on the calling (main) thread when
+ * there is no pool. Not while the frame's commands run. */
+void enh_parallel_rows(int rows, void (*fn)(int r0, int r1, void *ctx), void *ctx);
 void enh_raster_shutdown(void);
 void enh_raster_begin(void);
 void enh_buf_setup(void);

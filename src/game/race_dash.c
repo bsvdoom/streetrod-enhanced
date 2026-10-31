@@ -216,6 +216,7 @@ void wheel_draw(s16 nw, s16 old, FarPtr dst)
     }
     if (old != 100) dash_restore_rect((s16)(knob_x(old) - 2), (s16)(knob_y(old) - 2), 5, 5, 1);
     s16 x = knob_x(nw), y = knob_y(nw);
+    enh_hd_set_wheel_knob(x, (s16)(y + 100));                      /* ENH: the HD wheel's knob */
     dash_save_rect((s16)(x - 2), (s16)(y - 2), 5, 5, 1);
     u16 s7a = DSW(DS_g_draw_seg), s7c = DSW(0x767C);
     DSW(DS_g_draw_seg) = 0xA000;
