@@ -68,6 +68,7 @@ cmake --build build
 | `--draw-distance N` | Road draw distance in races, segments (default 60, 15–120; the original's is 15) |
 | `--motion-delay P` | Smooth view delay, % of a game frame (default 100) |
 | `--town on\|off` | Enhanced drives through town (default on) |
+| `--reduced-sky-rotation on\|off` | The horizon turns a quarter as much as in the original, and the sky with it (default on; off = as the original) |
 | `--music-volume P` | Music volume, % (default 100) |
 | `--sfx-volume P` | Sound effects volume, % (default 100) |
 | `--classic` | Original picture only |
